@@ -602,6 +602,17 @@ bool FNodeDocsGenerator::GenerateTypeMembers(UObject* Type)
 						}
 					}
 				}
+				else
+				{
+					// Avoid any property that is part of the superclass and then "redefined" in this Class
+					bool IsInSuper = PropertyIterator->IsInContainer(ClassInstance->GetSuperClass());
+					if (IsInSuper == false)
+					{
+						bool IsPublic = PropertyIterator->HasAnyPropertyFlags(CPF_NativeAccessSpecifierPublic);
+						UE_LOG(LogKantanDocGen, Warning, TEXT("##teamcity[message status='WARNING' text='No doc for UClass-MemberTag (IsPublic %i): %s::%s']"), 
+							IsPublic, *Type->GetName(), *PropertyIterator->GetNameCPP());
+					}
+				}
 			}
 
 			// Only insert this into the map of classdocs if it wasnt already in there, and we actually need it to be
@@ -610,6 +621,8 @@ bool FNodeDocsGenerator::GenerateTypeMembers(UObject* Type)
 			{
 				ClassDocTreeMap.Add(ClassInstance, ClassDocTree);
 				UpdateIndexDocWithClass(IndexTree, ClassInstance);
+				UE_LOG(LogKantanDocGen, Warning,
+					   TEXT("##teamcity[message status='WARNING' text='No doc for UClass: %s']"), *Type->GetName());
 			}
 		}
 		else if (Type->GetClass() == UScriptStruct::StaticClass())
@@ -631,6 +644,12 @@ bool FNodeDocsGenerator::GenerateTypeMembers(UObject* Type)
 							DoxygenElement->AppendChildWithValueEscaped(CurrentTag.Key, CurrentValue);
 						}
 					}
+				}
+				else
+				{
+					UE_LOG(LogKantanDocGen, Warning,
+						   TEXT("##teamcity[message status='WARNING' text='Warning in UScriptStruct: %s']"),
+						   *Type->GetName());
 				}
 
 				for (TFieldIterator<FProperty> PropertyIterator(Struct);
@@ -654,6 +673,13 @@ bool FNodeDocsGenerator::GenerateTypeMembers(UObject* Type)
 								DoxygenElement->AppendChildWithValueEscaped(CurrentTag.Key, CurrentValue);
 							}
 						}
+					}
+					else
+					{
+						UE_LOG(LogKantanDocGen, Warning,
+							   TEXT("##teamcity[message status='WARNING' text='Warning in UScriptStruct-property: "
+									"%s::%s']"),
+							   *Type->GetName(), *PropertyIterator->GetNameCPP());
 					}
 				}
 
@@ -682,6 +708,11 @@ bool FNodeDocsGenerator::GenerateTypeMembers(UObject* Type)
 						DoxygenElement->AppendChildWithValueEscaped(CurrentTag.Key, CurrentValue);
 					}
 				}
+			}
+			else
+			{
+				UE_LOG(LogKantanDocGen, Warning,
+					   TEXT("##teamcity[message status='WARNING' text='Warning in UEnum %s']"), *Type->GetName());
 			}
 
 			auto ValueList = EnumDocTree->FindChildByName("values");

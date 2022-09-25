@@ -690,11 +690,17 @@ bool FNodeDocsGenerator::GenerateTypeMembers(UObject* Type)
 					}
 					else if (HasCommentIterator == false)
 					{
-						FString LogStr = FString::Printf(
-							TEXT("##teamcity[message status='WARNING' text='Warning in UScriptStruct-property: "
-								 "%s::%s']\n"),
-							*Type->GetName(), *PropertyIterator->GetNameCPP());
-						FPlatformMisc::LocalPrint(*LogStr);
+						// Avoid any property that is part of the parent struct and then "redefined" in this Struct
+						bool IsInSuper = PropertyIterator->IsInContainer(Struct->GetSuperStruct());
+						
+						if (IsInSuper == false)
+						{
+							FString LogStr = FString::Printf(
+								TEXT("##teamcity[message status='WARNING' text='Warning in UScriptStruct-property: "
+									 "%s::%s']\n"),
+								*Type->GetName(), *PropertyIterator->GetNameCPP());
+							FPlatformMisc::LocalPrint(*LogStr);
+						}
 					}
 				}
 

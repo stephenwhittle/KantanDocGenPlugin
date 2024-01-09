@@ -141,7 +141,11 @@ int32 UDocGenCommandlet::Main(const FString& Params)
 	while (!GenerateDocsResult.IsReady())
 	{
 		FTaskGraphInterface::Get().ProcessThreadUntilIdle(ENamedThreads::GameThread);
+#if UE_VERSION_OLDER_THAN(5, 3, 0)
 		FTicker::GetCoreTicker().Tick(FApp::GetDeltaTime());
+#else
+		FTSTicker::GetCoreTicker().Tick(FApp::GetDeltaTime());
+#endif
 		FSlateApplication::Get().PumpMessages();
 		FSlateApplication::Get().Tick();
 		FPlatformProcess::Sleep(0);

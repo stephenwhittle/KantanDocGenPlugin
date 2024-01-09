@@ -7,7 +7,13 @@
 #pragma once
 
 #include "ISourceObjectEnumerator.h"
-#include "AssetData.h"
+#include "Misc/EngineVersionComparison.h"
+
+#if UE_VERSION_OLDER_THAN(5, 3, 0)
+	#include "AssetData.h"
+#else
+	#include "AssetRegistry/AssetData.h"
+#endif
 
 
 class FContentPathEnumerator: public ISourceObjectEnumerator

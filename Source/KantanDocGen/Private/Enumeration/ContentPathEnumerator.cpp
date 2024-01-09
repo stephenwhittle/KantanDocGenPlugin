@@ -6,8 +6,13 @@
 
 #include "ContentPathEnumerator.h"
 #include "KantanDocGenLog.h"
-#include "AssetRegistryModule.h"
-#include "ARFilter.h"
+#if UE_VERSION_OLDER_THAN(5, 3, 0)
+	#include "AssetRegistryModule.h"
+	#include "ARFilter.h"
+#else
+	#include "AssetRegistry/AssetRegistryModule.h"
+	#include "AssetRegistry/ARFilter.h"
+#endif
 #include "Engine/Blueprint.h"
 #include "Animation/AnimBlueprint.h"
 
@@ -28,10 +33,18 @@ void FContentPathEnumerator::Prepass(FName const& Path)
 
 	FARFilter Filter;
 	Filter.bRecursiveClasses = true;
+#if UE_VERSION_OLDER_THAN(5, 3, 0)
 	Filter.ClassNames.Add(UBlueprint::StaticClass()->GetFName());
-	
+	#else
+	Filter.ClassPaths.Add(UBlueprint::StaticClass()->GetClassPathName());
+	#endif
+
+	#if UE_VERSION_OLDER_THAN(5, 3, 0)
 	// @TODO: Not sure about this, but for some reason was generating docs for 'AnimInstance' itself.
 	Filter.RecursiveClassesExclusionSet.Add(UAnimBlueprint::StaticClass()->GetFName());
+	#else
+	Filter.RecursiveClassPathsExclusionSet.Add(UAnimBlueprint::StaticClass()->GetClassPathName());
+	#endif
 
 	AssetRegistry.GetAssetsByPath(Path, AssetList, true);
 	AssetRegistry.RunAssetsThroughFilter(AssetList, Filter);
@@ -48,8 +61,11 @@ UObject* FContentPathEnumerator::GetNext()
 
 		if(auto Blueprint = Cast< UBlueprint >(AssetData.GetAsset()))
 		{
+#if UE_VERSION_OLDER_THAN(5, 3, 0)
 			UE_LOG(LogKantanDocGen, Log, TEXT("Enumerating object '%s' at '%s'"), *Blueprint->GetName(), *AssetData.ObjectPath.ToString());
-
+#else
+			UE_LOG(LogKantanDocGen, Log, TEXT("Enumerating object '%s' at '%s'"), *Blueprint->GetName(), *AssetData.GetSoftObjectPath().ToString());
+			#endif
 			Result = Blueprint;
 			break;
 		}

@@ -67,6 +67,7 @@ protected:
 	TSharedPtr<DocTreeNode> InitClassDocTree(UClass* Class);
 	TSharedPtr<DocTreeNode> InitStructDocTree(UScriptStruct* Struct);
 	TSharedPtr<DocTreeNode> InitEnumDocTree(UEnum* Enum);
+	void AddMetaDataMapToNode(TSharedPtr<DocTreeNode> Node, const TMap<FName, FString>* MetaDataMap);
 	bool UpdateIndexDocWithClass(TSharedPtr<DocTreeNode> DocTree, UClass* Class);
 	bool UpdateIndexDocWithStruct(TSharedPtr<DocTreeNode> DocTree, UStruct* Struct);
 	bool UpdateIndexDocWithEnum(TSharedPtr<DocTreeNode> DocTree, UEnum* Enum);

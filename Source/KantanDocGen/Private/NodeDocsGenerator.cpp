@@ -34,6 +34,7 @@
 #include "Stats/StatsMisc.h"
 #include "TextureResource.h"
 #include "ThreadingHelpers.h"
+#include "WidgetBlueprint.h"
 
 FNodeDocsGenerator::~FNodeDocsGenerator()
 {
@@ -303,6 +304,7 @@ TSharedPtr<DocTreeNode> FNodeDocsGenerator::InitClassDocTree(UClass* Class)
 										  FBlueprintEditorUtils::GetFriendlyClassDisplayName(Class).ToString());
 	ClassDoc->AppendChild(TEXT("nodes"));
 	ClassDoc->AppendChild(TEXT("fields"));
+	AddMetaDataMapToNode(ClassDoc, Class->GetOuterUPackage()->GetMetaData()->GetMapForObject(Class));
 	return ClassDoc;
 }
 
@@ -321,6 +323,7 @@ TSharedPtr<DocTreeNode> FNodeDocsGenerator::InitStructDocTree(UScriptStruct* Str
 											   FName::NameToDisplayString(Struct->GetName(), false));
 	}
 	StructDoc->AppendChild(TEXT("fields"));
+	AddMetaDataMapToNode(StructDoc, Struct->GetOutermost()->GetPackage()->GetMetaData()->GetMapForObject(Struct));
 	return StructDoc;
 }
 
@@ -338,7 +341,20 @@ TSharedPtr<DocTreeNode> FNodeDocsGenerator::InitEnumDocTree(UEnum* Enum)
 		EnumDoc->AppendChildWithValueEscaped(TEXT("display_name"), Enum->GetName());
 	}
 	EnumDoc->AppendChild(TEXT("values"));
+	AddMetaDataMapToNode(EnumDoc, Enum->GetPackage()->GetMetaData()->GetMapForObject(Enum));
 	return EnumDoc;
+}
+
+void FNodeDocsGenerator::AddMetaDataMapToNode(TSharedPtr<DocTreeNode> Node, const TMap<FName, FString>* MetaDataMap)
+{
+	if (MetaDataMap)
+	{
+		auto MetaDataNode = Node->AppendChild("meta");
+		for (const auto& Entry : *MetaDataMap)
+		{
+			MetaDataNode->AppendChildWithValueEscaped(Entry.Key.ToString(), Entry.Value);
+		}
+	}
 }
 
 bool FNodeDocsGenerator::UpdateIndexDocWithClass(TSharedPtr<DocTreeNode> DocTree, UClass* Class)
@@ -567,10 +583,26 @@ bool FNodeDocsGenerator::GenerateTypeMembers(UObject* Type)
 {
 	if (Type)
 	{
+		if (Type->GetName() == FString("WBP_ModioDefaultButton"))
+		{
+			UE_LOG(LogTemp, Display, TEXT("Test"));
+		}
+
 		UE_LOG(LogKantanDocGen, Display, TEXT("generating type members for : %s"), *Type->GetName());
-		if (Type->GetClass() == UClass::StaticClass())
+		if (Type->GetClass() == UClass::StaticClass() || Type->GetClass() == UWidgetBlueprint::StaticClass())
 		{
 			UClass* ClassInstance = Cast<UClass>(Type);
+			if (!ClassInstance)
+			{
+				if (UWidgetBlueprint* WBP = Cast<UWidgetBlueprint>(Type))
+				{
+					ClassInstance = WBP->SkeletonGeneratedClass;
+				}
+				if (!ClassInstance)
+				{
+					return true;
+				}
+			}
 			TSharedPtr<DocTreeNode>* FoundClassDocTree = ClassDocTreeMap.Find(ClassInstance);
 			TSharedPtr<DocTreeNode> ClassDocTree;
 			if (!FoundClassDocTree)
@@ -583,51 +615,60 @@ bool FNodeDocsGenerator::GenerateTypeMembers(UObject* Type)
 			}
 			bool bClassShouldBeDocumented = false;
 			auto MemberList = ClassDocTree->FindChildByName("fields");
-			for (TFieldIterator<FProperty> PropertyIterator(ClassInstance);
-				 PropertyIterator && ((PropertyIterator->PropertyFlags & CPF_BlueprintVisible) ||
-										  (PropertyIterator->HasAnyPropertyFlags(CPF_Deprecated))); ++PropertyIterator)
+			for (TFieldIterator<FProperty> PropertyIterator(ClassInstance); PropertyIterator; ++PropertyIterator)
 			{
-				bClassShouldBeDocumented = true;
-				UE_LOG(LogKantanDocGen, Display, TEXT("member for class found : %s"), *PropertyIterator->GetNameCPP());
-				auto Member = MemberList->AppendChild(TEXT("field"));
-				Member->AppendChildWithValueEscaped("name", PropertyIterator->GetNameCPP());
-				FString ExtendedTypeString;
-				FString TypeString = PropertyIterator->GetCPPType(&ExtendedTypeString);
-				Member->AppendChildWithValueEscaped("type", TypeString + ExtendedTypeString);
-				if (PropertyIterator->HasAnyPropertyFlags(CPF_Deprecated))
+				if ((PropertyIterator->PropertyFlags & CPF_BlueprintVisible) ||
+					(PropertyIterator->HasAnyPropertyFlags(CPF_Deprecated)))
 				{
-					FText DetailedMessage =
-						FText::FromString(PropertyIterator->GetMetaData(FBlueprintMetadata::MD_DeprecationMessage));
-					Member->AppendChildWithValueEscaped("deprecated", DetailedMessage.ToString());
-				}
-				const FString& Comment = PropertyIterator->GetMetaData(TEXT("Comment"));
-				auto MemberTags = Detail::ParseDoxygenTagsForString(Comment);
-				if (MemberTags.Num())
-				{
-					auto DoxygenElement = Member->AppendChild("doxygen");
-					for (auto CurrentTag : MemberTags)
+					bClassShouldBeDocumented = true;
+					UE_LOG(LogKantanDocGen, Display, TEXT("member for class found : %s"),
+						   *PropertyIterator->GetNameCPP());
+					auto Member = MemberList->AppendChild(TEXT("field"));
+					Member->AppendChildWithValueEscaped("name", PropertyIterator->GetNameCPP());
+					FString ExtendedTypeString;
+					FString TypeString = PropertyIterator->GetCPPType(&ExtendedTypeString);
+					Member->AppendChildWithValueEscaped("type", TypeString + ExtendedTypeString);
+					if (PropertyIterator->HasAnyPropertyFlags(CPF_Deprecated))
 					{
-						for (auto CurrentValue : CurrentTag.Value)
+						FText DetailedMessage =
+							FText::FromString(PropertyIterator->GetMetaData(FBlueprintMetadata::MD_DeprecationMessage));
+						Member->AppendChildWithValueEscaped("deprecated", DetailedMessage.ToString());
+					}
+					AddMetaDataMapToNode(Member, PropertyIterator->GetMetaDataMap());
+					const FString& Comment = PropertyIterator->GetMetaData(TEXT("Comment"));
+					auto MemberTags = Detail::ParseDoxygenTagsForString(Comment);
+					if (MemberTags.Num())
+					{
+						auto DoxygenElement = Member->AppendChild("doxygen");
+						for (auto CurrentTag : MemberTags)
 						{
-							DoxygenElement->AppendChildWithValueEscaped(CurrentTag.Key, CurrentValue);
+							for (auto CurrentValue : CurrentTag.Value)
+							{
+								DoxygenElement->AppendChildWithValueEscaped(CurrentTag.Key, CurrentValue);
+							}
+						}
+					}
+					else
+					{
+						// Avoid any property that is part of the superclass and then "redefined" in this Class
+						bool IsInSuper = PropertyIterator->IsInContainer(ClassInstance->GetSuperClass());
+						bool HasComment = Comment.Len() > 0;
+						// UE_LOG(LogKantanDocGen, Warning, TEXT("Name: %s, comment (%i): %s"), *Type->GetName(),
+						// Comment.Len(), *Comment);
+						if (IsInSuper == false && HasComment == false)
+						{
+							bool IsPublic = PropertyIterator->HasAnyPropertyFlags(CPF_NativeAccessSpecifierPublic);
+							FString LogStr =
+								FString::Printf(TEXT("##teamcity[message status='WARNING' text='No doc for "
+													 "UClass-MemberTag (IsPublic %i): %s::%s']\n"),
+												IsPublic, *Type->GetName(), *PropertyIterator->GetNameCPP());
+							FPlatformMisc::LocalPrint(*LogStr);
 						}
 					}
 				}
 				else
 				{
-					// Avoid any property that is part of the superclass and then "redefined" in this Class
-					bool IsInSuper = PropertyIterator->IsInContainer(ClassInstance->GetSuperClass());
-					bool HasComment = Comment.Len() > 0;
-					// UE_LOG(LogKantanDocGen, Warning, TEXT("Name: %s, comment (%i): %s"), *Type->GetName(),
-					// Comment.Len(), *Comment);
-					if (IsInSuper == false && HasComment == false)
-					{
-						bool IsPublic = PropertyIterator->HasAnyPropertyFlags(CPF_NativeAccessSpecifierPublic);
-						FString LogStr = FString::Printf(TEXT("##teamcity[message status='WARNING' text='No doc for "
-															  "UClass-MemberTag (IsPublic %i): %s::%s']\n"),
-														 IsPublic, *Type->GetName(), *PropertyIterator->GetNameCPP());
-						FPlatformMisc::LocalPrint(*LogStr);
-					}
+					UE_LOG(LogKantanDocGen, Display, TEXT("skipping member : %s"), *PropertyIterator->GetNameCPP());
 				}
 			}
 
@@ -871,7 +912,7 @@ void FNodeDocsGenerator::AdjustNodeForSnapshot(UEdGraphNode* Node)
 
 FString FNodeDocsGenerator::GetClassDocId(UClass* Class)
 {
-	return Class->GetName();
+	return Class ? Class->GetName() : FString {};
 }
 
 FString FNodeDocsGenerator::GetNodeDocId(UEdGraphNode* Node)

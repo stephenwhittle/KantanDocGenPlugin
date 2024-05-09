@@ -35,6 +35,31 @@
 #include "TextureResource.h"
 #include "ThreadingHelpers.h"
 #include "WidgetBlueprint.h"
+#include "UObject/MetaData.h"
+
+
+
+
+bool IsFunctionInherited(UFunction* Function) 
+{
+	bool bIsBpInheritedFunc = false;
+	if (Function)
+	{
+		if (UClass* FuncClass = Function->GetOwnerClass())
+		{
+			if (UBlueprint* BpOwner = Cast<UBlueprint>(FuncClass->ClassGeneratedBy))
+			{
+				FName FuncName = Function->GetFName();
+				if (UClass* ParentClass = BpOwner->ParentClass)
+				{
+					bIsBpInheritedFunc =
+						(ParentClass->FindFunctionByName(FuncName, EIncludeSuperFlag::IncludeSuper) != nullptr);
+				}
+			}
+		}
+	}
+	return bIsBpInheritedFunc;
+}
 
 FNodeDocsGenerator::~FNodeDocsGenerator()
 {
@@ -304,7 +329,7 @@ TSharedPtr<DocTreeNode> FNodeDocsGenerator::InitClassDocTree(UClass* Class)
 										  FBlueprintEditorUtils::GetFriendlyClassDisplayName(Class).ToString());
 	ClassDoc->AppendChild(TEXT("nodes"));
 	ClassDoc->AppendChild(TEXT("fields"));
-	AddMetaDataMapToNode(ClassDoc, Class->GetOuterUPackage()->GetMetaData()->GetMapForObject(Class));
+	AddMetaDataMapToNode(ClassDoc, UMetaData::GetMapForObject(Class));
 	return ClassDoc;
 }
 
@@ -323,7 +348,7 @@ TSharedPtr<DocTreeNode> FNodeDocsGenerator::InitStructDocTree(UScriptStruct* Str
 											   FName::NameToDisplayString(Struct->GetName(), false));
 	}
 	StructDoc->AppendChild(TEXT("fields"));
-	AddMetaDataMapToNode(StructDoc, Struct->GetOutermost()->GetPackage()->GetMetaData()->GetMapForObject(Struct));
+	AddMetaDataMapToNode(StructDoc, UMetaData::GetMapForObject(Struct));
 	return StructDoc;
 }
 
@@ -341,7 +366,7 @@ TSharedPtr<DocTreeNode> FNodeDocsGenerator::InitEnumDocTree(UEnum* Enum)
 		EnumDoc->AppendChildWithValueEscaped(TEXT("display_name"), Enum->GetName());
 	}
 	EnumDoc->AppendChild(TEXT("values"));
-	AddMetaDataMapToNode(EnumDoc, Enum->GetPackage()->GetMetaData()->GetMapForObject(Enum));
+	AddMetaDataMapToNode(EnumDoc, UMetaData::GetMapForObject(Enum));
 	return EnumDoc;
 }
 
@@ -460,7 +485,9 @@ bool FNodeDocsGenerator::GenerateNodeDocTree(UK2Node* Node, FNodeProcessingState
 		{
 			NodeDocFile->AppendChildWithValueEscaped("funcname", Func->GetAuthoredName());
 			NodeDocFile->AppendChildWithValueEscaped("rawcomment", Func->GetMetaData(TEXT("Comment")));
+			NodeDocFile->AppendChildWithValue("inherited", IsFunctionInherited(Func) ? "true" : "false");
 			NodeDocFile->AppendChildWithValue("static", Func->HasAnyFunctionFlags(FUNC_Static) ? "true" : "false");
+			AddMetaDataMapToNode(NodeDocFile, UMetaData::GetMapForObject(Func));
 			NodeDocFile->AppendChildWithValue("autocast",
 											  Func->HasMetaData(TEXT("BlueprintAutocast")) ? "true" : "false");
 			TArray<FStringFormatArg> Args;
@@ -635,6 +662,9 @@ bool FNodeDocsGenerator::GenerateTypeMembers(UObject* Type)
 						Member->AppendChildWithValueEscaped("deprecated", DetailedMessage.ToString());
 					}
 					AddMetaDataMapToNode(Member, PropertyIterator->GetMetaDataMap());
+					Member->AppendChildWithValue("inherited",
+												 PropertyIterator->GetOwnerClass() != ClassInstance ? "true" : "false");
+					Member->AppendChildWithValue("instance_editable", PropertyIterator->HasAnyPropertyFlags(CPF_DisableEditOnInstance) ? "false": "true");
 					const FString& Comment = PropertyIterator->GetMetaData(TEXT("Comment"));
 					auto MemberTags = Detail::ParseDoxygenTagsForString(Comment);
 					if (MemberTags.Num())

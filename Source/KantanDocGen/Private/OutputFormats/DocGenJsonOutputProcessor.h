@@ -18,6 +18,7 @@ class DocGenJsonOutputProcessor : public IDocGenOutputProcessor
 
 	TSharedPtr<class FJsonObject> ParseNodeFile(const FString& NodeFilePath);
 
+	TSharedPtr<FJsonObject> ParseClassFile(const FString& ClassFilePath);
 	TSharedPtr<FJsonObject> ParseStructFile(const FString& StructFilePath);
 	TSharedPtr<FJsonObject> ParseEnumFile(const FString& EnumFilePath);
 	void CopyJsonField(const FString& FieldName, TSharedPtr<FJsonObject> ParsedNode, TSharedPtr<FJsonObject> OutNode);

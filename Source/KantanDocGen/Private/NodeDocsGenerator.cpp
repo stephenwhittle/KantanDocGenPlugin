@@ -34,13 +34,10 @@
 #include "Stats/StatsMisc.h"
 #include "TextureResource.h"
 #include "ThreadingHelpers.h"
-#include "WidgetBlueprint.h"
 #include "UObject/MetaData.h"
+#include "WidgetBlueprint.h"
 
-
-
-
-bool IsFunctionInherited(UFunction* Function) 
+bool IsFunctionInherited(UFunction* Function)
 {
 	bool bIsBpInheritedFunc = false;
 	if (Function)
@@ -327,9 +324,29 @@ TSharedPtr<DocTreeNode> FNodeDocsGenerator::InitClassDocTree(UClass* Class)
 	ClassDoc->AppendChildWithValueEscaped(TEXT("id"), GetClassDocId(Class));
 	ClassDoc->AppendChildWithValueEscaped(TEXT("display_name"),
 										  FBlueprintEditorUtils::GetFriendlyClassDisplayName(Class).ToString());
+
+	TMap<FName, FString> Metadata = *UMetaData::GetMapForObject(Class);
+	UClass* SuperClass = Class->GetSuperClass();
+	auto ChildClassNode = ClassDoc;
+	while (SuperClass)
+	{
+		ChildClassNode = ChildClassNode->AppendChild(TEXT("parent_class"));
+		ChildClassNode->AppendChildWithValueEscaped(TEXT("id"), GetClassDocId(SuperClass));
+		ChildClassNode->AppendChildWithValueEscaped(
+			TEXT("display_name"), FBlueprintEditorUtils::GetFriendlyClassDisplayName(SuperClass).ToString());
+		TMap<FName, FString> SuperMetadata = *UMetaData::GetMapForObject(SuperClass);
+		if (SuperMetadata.Num())
+		{
+			SuperMetadata.Append(Metadata);
+			Metadata = SuperMetadata;
+		}
+		SuperClass = SuperClass->GetSuperClass();
+	}
+
+	AddMetaDataMapToNode(ClassDoc, &Metadata);
+
 	ClassDoc->AppendChild(TEXT("nodes"));
 	ClassDoc->AppendChild(TEXT("fields"));
-	AddMetaDataMapToNode(ClassDoc, UMetaData::GetMapForObject(Class));
 	return ClassDoc;
 }
 
@@ -347,8 +364,36 @@ TSharedPtr<DocTreeNode> FNodeDocsGenerator::InitStructDocTree(UScriptStruct* Str
 		StructDoc->AppendChildWithValueEscaped(TEXT("display_name"),
 											   FName::NameToDisplayString(Struct->GetName(), false));
 	}
+	TMap<FName, FString> Metadata = *UMetaData::GetMapForObject(Struct);
+	UStruct* SuperStruct = Struct->GetSuperStruct();
+	auto ChildStructNode = StructDoc;
+	while (SuperStruct)
+	{
+		ChildStructNode = ChildStructNode->AppendChild(TEXT("parent_class"));
+		ChildStructNode->AppendChildWithValueEscaped(TEXT("id"), SuperStruct->GetName());
+		if (SuperStruct->HasMetaData(TEXT("DisplayName")))
+		{
+			ChildStructNode->AppendChildWithValueEscaped(TEXT("display_name"),
+														 SuperStruct->GetMetaData(TEXT("DisplayName")));
+		}
+		else
+		{
+			ChildStructNode->AppendChildWithValueEscaped(TEXT("display_name"),
+														 FName::NameToDisplayString(SuperStruct->GetName(), false));
+		}
+
+		TMap<FName, FString> SuperMetadata = *UMetaData::GetMapForObject(SuperStruct);
+		if (SuperMetadata.Num())
+		{
+			SuperMetadata.Append(Metadata);
+			Metadata = SuperMetadata;
+		}
+		SuperStruct = SuperStruct->GetSuperStruct();
+	}
+
+	AddMetaDataMapToNode(StructDoc, &Metadata);
 	StructDoc->AppendChild(TEXT("fields"));
-	AddMetaDataMapToNode(StructDoc, UMetaData::GetMapForObject(Struct));
+
 	return StructDoc;
 }
 
@@ -484,9 +529,29 @@ bool FNodeDocsGenerator::GenerateNodeDocTree(UK2Node* Node, FNodeProcessingState
 		if (Func)
 		{
 			NodeDocFile->AppendChildWithValueEscaped("funcname", Func->GetAuthoredName());
+			if (Func->GetAuthoredName() == "ResolveClassPathOverride_Casted")
+			{
+				UE_LOG(LogTemp, Display, TEXT("test"));
+			}
 			NodeDocFile->AppendChildWithValueEscaped("rawcomment", Func->GetMetaData(TEXT("Comment")));
 			NodeDocFile->AppendChildWithValue("inherited", IsFunctionInherited(Func) ? "true" : "false");
 			NodeDocFile->AppendChildWithValue("static", Func->HasAnyFunctionFlags(FUNC_Static) ? "true" : "false");
+			if (Func->HasAnyFunctionFlags(FUNC_Private))
+			{
+				NodeDocFile->AppendChildWithValue("access_specifier", "private");
+			}
+			else if (Func->HasAnyFunctionFlags(FUNC_Protected))
+			{
+				NodeDocFile->AppendChildWithValue("access_specifier", "protected");
+			}
+			else if (Func->HasAnyFunctionFlags(FUNC_Public))
+			{
+				NodeDocFile->AppendChildWithValue("access_specifier", "public");
+			}
+			else
+			{
+				NodeDocFile->AppendChildWithValue("access_specifier", "unknown");
+			}
 			AddMetaDataMapToNode(NodeDocFile, UMetaData::GetMapForObject(Func));
 			NodeDocFile->AppendChildWithValue("autocast",
 											  Func->HasMetaData(TEXT("BlueprintAutocast")) ? "true" : "false");
@@ -610,7 +675,7 @@ bool FNodeDocsGenerator::GenerateTypeMembers(UObject* Type)
 {
 	if (Type)
 	{
-		if (Type->GetName() == FString("WBP_ModioDefaultButton"))
+		if (Type->GetName() == FString("ModioButtonWidget"))
 		{
 			UE_LOG(LogTemp, Display, TEXT("Test"));
 		}
@@ -664,7 +729,32 @@ bool FNodeDocsGenerator::GenerateTypeMembers(UObject* Type)
 					AddMetaDataMapToNode(Member, PropertyIterator->GetMetaDataMap());
 					Member->AppendChildWithValue("inherited",
 												 PropertyIterator->GetOwnerClass() != ClassInstance ? "true" : "false");
-					Member->AppendChildWithValue("instance_editable", PropertyIterator->HasAnyPropertyFlags(CPF_DisableEditOnInstance) ? "false": "true");
+					Member->AppendChildWithValue(
+						"instance_editable",
+						PropertyIterator->HasAnyPropertyFlags(CPF_DisableEditOnInstance) ? "false" : "true");
+					if (PropertyIterator->GetBoolMetaData(FBlueprintMetadata::MD_Private))
+					{
+						Member->AppendChildWithValue("access_specifier", "private");
+					}
+					else
+					{
+						if (PropertyIterator->HasAnyPropertyFlags(CPF_NativeAccessSpecifierPrivate))
+						{
+							Member->AppendChildWithValue("access_specifier", "private");
+						}
+						else if (PropertyIterator->HasAnyPropertyFlags(CPF_NativeAccessSpecifierProtected))
+						{
+							Member->AppendChildWithValue("access_specifier", "protected");
+						}
+						else if (PropertyIterator->HasAnyPropertyFlags(CPF_NativeAccessSpecifierPublic))
+						{
+							Member->AppendChildWithValue("access_specifier", "public");
+						}
+						else
+						{
+							Member->AppendChildWithValue("access_specifier", "unknown");
+						}
+					}
 					const FString& Comment = PropertyIterator->GetMetaData(TEXT("Comment"));
 					auto MemberTags = Detail::ParseDoxygenTagsForString(Comment);
 					if (MemberTags.Num())
@@ -708,11 +798,15 @@ bool FNodeDocsGenerator::GenerateTypeMembers(UObject* Type)
 			// *Comment);
 
 			// Only insert this into the map of classdocs if it wasnt already in there, we actually need it to be
-			// included and does not have any comments
-			if (!FoundClassDocTree && bClassShouldBeDocumented && HasComment == false)
+			// included
+			if (!FoundClassDocTree && bClassShouldBeDocumented)
 			{
 				ClassDocTreeMap.Add(ClassInstance, ClassDocTree);
 				UpdateIndexDocWithClass(IndexTree, ClassInstance);
+			}
+			// Emit warning about documented class with no actual classdoc
+			if (bClassShouldBeDocumented && HasComment == false)
+			{
 				FString LogStr = FString::Printf(
 					TEXT("##teamcity[message status='WARNING' text='No doc for UClass: %s']\n"), *Type->GetName());
 				FPlatformMisc::LocalPrint(*LogStr);

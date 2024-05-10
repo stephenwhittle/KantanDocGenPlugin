@@ -117,8 +117,34 @@ TSharedPtr<FJsonObject> DocGenJsonOutputProcessor::ParseNodeFile(const FString& 
 	CopyJsonField("static", ParsedNode, OutNode);
 	CopyJsonField("autocast", ParsedNode, OutNode);
 	CopyJsonField("funcname", ParsedNode, OutNode);
+	CopyJsonField("access_specifier", ParsedNode, OutNode);
+	CopyJsonField("meta", ParsedNode, OutNode);
 	return OutNode;
 }
+
+TSharedPtr<FJsonObject> DocGenJsonOutputProcessor::ParseClassFile(const FString& ClassFilePath)
+{
+	TSharedPtr<FJsonObject> ParsedClass = LoadFileToJson(ClassFilePath);
+	if (!ParsedClass)
+	{
+		return {};
+	}
+
+	TSharedPtr<FJsonObject> OutNode = MakeShared<FJsonObject>();
+	// Reusing the class template for now so renaming id to class_id to be consistent
+	if (TSharedPtr<FJsonValue> Field = ParsedClass->TryGetField("id"))
+	{
+		OutNode->SetField("class_id", Field);
+	}
+
+	CopyJsonField("doxygen", ParsedClass, OutNode);
+	CopyJsonField("display_name", ParsedClass, OutNode);
+	CopyJsonField("fields", ParsedClass, OutNode);
+	CopyJsonField("parent_class", ParsedClass, OutNode);
+	CopyJsonField("meta", ParsedClass, OutNode);
+	return OutNode;
+}
+
 TSharedPtr<FJsonObject> DocGenJsonOutputProcessor::ParseStructFile(const FString& StructFilePath)
 {
 	TSharedPtr<FJsonObject> ParsedStruct = LoadFileToJson(StructFilePath);
@@ -137,6 +163,8 @@ TSharedPtr<FJsonObject> DocGenJsonOutputProcessor::ParseStructFile(const FString
 	CopyJsonField("doxygen", ParsedStruct, OutNode);
 	CopyJsonField("display_name", ParsedStruct, OutNode);
 	CopyJsonField("fields", ParsedStruct, OutNode);
+	CopyJsonField("parent_class", ParsedStruct, OutNode);
+	CopyJsonField("meta", ParsedStruct, OutNode);
 	return OutNode;
 }
 
@@ -154,6 +182,7 @@ TSharedPtr<FJsonObject> DocGenJsonOutputProcessor::ParseEnumFile(const FString& 
 	CopyJsonField("doxygen", ParsedEnum, OutNode);
 	CopyJsonField("display_name", ParsedEnum, OutNode);
 	CopyJsonField("values", ParsedEnum, OutNode);
+	CopyJsonField("meta", ParsedEnum, OutNode);
 
 	return OutNode;
 }
@@ -398,6 +427,7 @@ EIntermediateProcessingResult DocGenJsonOutputProcessor::ConsolidateClasses(TSha
 	{
 		const FString ClassFilePath = IntermediateDir / ClassName / ClassName + ".json";
 		TOptional<TArray<FString>> NodeNames = GetNamesFromFileAtLocation("nodes", ClassFilePath);
+		TSharedPtr<FJsonObject> ParsedClass = ParseStructFile(ClassFilePath);
 		if (!NodeNames.IsSet())
 		{
 			return EIntermediateProcessingResult::UnknownError;
@@ -439,13 +469,19 @@ EIntermediateProcessingResult DocGenJsonOutputProcessor::ConsolidateClasses(TSha
 				}
 			}
 			// We don't want classes in our classlist if all their nodes are static
-			if (Nodes.Num())
-			{
-				FJsonDomBuilder::FObject ClassObj;
-				ClassObj.Set("functions", Nodes);
-				ClassObj.Set("class_id", ClassName);
-				ClassFunctionList.Set(ClassName, ClassObj);
-			}
+			FJsonDomBuilder::FObject ClassObj;
+			ClassObj.Set("functions", Nodes);
+			ClassObj.Set("class_id", ClassName);
+			ClassObj.Set("display_name", ParsedClass->GetStringField("display_name"));
+			ClassObj.Set("meta", MakeShared<FJsonValueObject>(ParsedClass->GetObjectField("meta")));
+			ClassObj.Set("parent_class", MakeShared<FJsonValueObject>(ParsedClass->GetObjectField("parent_class")));
+			
+			const TArray<TSharedPtr<FJsonValue>>* FieldArray;
+			bool bHadFields = ParsedClass->TryGetArrayField("fields", FieldArray);
+			ClassObj.Set("fields", bHadFields ? MakeShared<FJsonValueArray>(*FieldArray)
+											  : MakeShared<FJsonValueArray>(TArray<TSharedPtr<FJsonValue>> {}));
+
+			ClassFunctionList.Set(ClassName, ClassObj);
 		}
 	}
 

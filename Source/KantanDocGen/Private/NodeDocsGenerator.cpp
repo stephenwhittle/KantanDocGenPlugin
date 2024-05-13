@@ -675,11 +675,6 @@ bool FNodeDocsGenerator::GenerateTypeMembers(UObject* Type)
 {
 	if (Type)
 	{
-		if (Type->GetName() == FString("ModioButtonWidget"))
-		{
-			UE_LOG(LogTemp, Display, TEXT("Test"));
-		}
-
 		UE_LOG(LogKantanDocGen, Display, TEXT("generating type members for : %s"), *Type->GetName());
 		if (Type->GetClass() == UClass::StaticClass() || Type->GetClass() == UWidgetBlueprint::StaticClass())
 		{
@@ -791,9 +786,20 @@ bool FNodeDocsGenerator::GenerateTypeMembers(UObject* Type)
 					UE_LOG(LogKantanDocGen, Display, TEXT("skipping member : %s"), *PropertyIterator->GetNameCPP());
 				}
 			}
-
 			const FString& Comment = ClassInstance->GetMetaData(TEXT("Comment"));
 			bool HasComment = Comment.Len() > 0;
+			auto ClassTags = Detail::ParseDoxygenTagsForString(Comment);
+			if (ClassTags.Num())
+			{
+				auto DoxygenElement = ClassDocTree->AppendChild("doxygen");
+				for (auto CurrentTag : ClassTags)
+				{
+					for (auto CurrentValue : CurrentTag.Value)
+					{
+						DoxygenElement->AppendChildWithValueEscaped(CurrentTag.Key, CurrentValue);
+					}
+				}
+			}
 			// UE_LOG(LogKantanDocGen, Warning, TEXT("UClass: %s, comment (%i): %s"), *Type->GetName(), Comment.Len(),
 			// *Comment);
 
@@ -1036,7 +1042,15 @@ void FNodeDocsGenerator::AdjustNodeForSnapshot(UEdGraphNode* Node)
 
 FString FNodeDocsGenerator::GetClassDocId(UClass* Class)
 {
-	return Class ? Class->GetName() : FString {};
+	if (Class)
+	{
+		if (UBlueprintGeneratedClass* AsGeneratedClass = Cast<UBlueprintGeneratedClass>(Class))
+		{
+			return AsGeneratedClass->ClassGeneratedBy->GetName();
+		}
+		return Class->GetName();
+	}
+	return FString {};
 }
 
 FString FNodeDocsGenerator::GetNodeDocId(UEdGraphNode* Node)

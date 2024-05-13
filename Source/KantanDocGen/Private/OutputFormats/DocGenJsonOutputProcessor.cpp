@@ -5,9 +5,9 @@
 // To define the UE_5_0_OR_LATER below
 #include "Misc/EngineVersionComparison.h"
 #if UE_VERSION_NEWER_THAN(5, 0, 0)
-#include "HAL/PlatformFileManager.h"
+	#include "HAL/PlatformFileManager.h"
 #else
-#include "HAL/PlatformFilemanager.h"
+	#include "HAL/PlatformFilemanager.h"
 #endif
 
 #include "Json.h"
@@ -475,7 +475,12 @@ EIntermediateProcessingResult DocGenJsonOutputProcessor::ConsolidateClasses(TSha
 			ClassObj.Set("display_name", ParsedClass->GetStringField("display_name"));
 			ClassObj.Set("meta", MakeShared<FJsonValueObject>(ParsedClass->GetObjectField("meta")));
 			ClassObj.Set("parent_class", MakeShared<FJsonValueObject>(ParsedClass->GetObjectField("parent_class")));
-			
+			const TSharedPtr<FJsonObject>* DoxygenBlock;
+			bool bHadDoxygenBlock = ParsedClass->TryGetObjectField("doxygen", DoxygenBlock);
+			if (bHadDoxygenBlock)
+			{
+				ClassObj.Set("doxygen", MakeShared<FJsonValueObject>(*DoxygenBlock));
+			}
 			const TArray<TSharedPtr<FJsonValue>>* FieldArray;
 			bool bHadFields = ParsedClass->TryGetArrayField("fields", FieldArray);
 			ClassObj.Set("fields", bHadFields ? MakeShared<FJsonValueArray>(*FieldArray)

@@ -53,6 +53,8 @@ public:
 	/** Callable from background thread */
 	bool GenerateNodeImage(UEdGraphNode* Node, FNodeProcessingState& State);
 	bool GenerateNodeDocTree(UK2Node* Node, FNodeProcessingState& State);
+
+	
 	bool GenerateTypeMembers(UObject* Type);
 	/**/
 
@@ -68,6 +70,7 @@ protected:
 	TSharedPtr<DocTreeNode> InitStructDocTree(UScriptStruct* Struct);
 	TSharedPtr<DocTreeNode> InitEnumDocTree(UEnum* Enum);
 	void AddMetaDataMapToNode(TSharedPtr<DocTreeNode> Node, const TMap<FName, FString>* MetaDataMap);
+	FString GenerateFunctionSignatureString(UFunction* Func, bool bUseFuncPtrStyle = false);
 	bool UpdateIndexDocWithClass(TSharedPtr<DocTreeNode> DocTree, UClass* Class);
 	bool UpdateIndexDocWithStruct(TSharedPtr<DocTreeNode> DocTree, UStruct* Struct);
 	bool UpdateIndexDocWithEnum(TSharedPtr<DocTreeNode> DocTree, UEnum* Enum);

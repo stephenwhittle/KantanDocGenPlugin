@@ -529,10 +529,6 @@ bool FNodeDocsGenerator::GenerateNodeDocTree(UK2Node* Node, FNodeProcessingState
 		if (Func)
 		{
 			NodeDocFile->AppendChildWithValueEscaped("funcname", Func->GetAuthoredName());
-			if (Func->GetAuthoredName() == "ResolveClassPathOverride_Casted")
-			{
-				UE_LOG(LogTemp, Display, TEXT("test"));
-			}
 			NodeDocFile->AppendChildWithValueEscaped("rawcomment", Func->GetMetaData(TEXT("Comment")));
 			NodeDocFile->AppendChildWithValue("inherited", IsFunctionInherited(Func) ? "true" : "false");
 			NodeDocFile->AppendChildWithValue("static", Func->HasAnyFunctionFlags(FUNC_Static) ? "true" : "false");
@@ -555,44 +551,8 @@ bool FNodeDocsGenerator::GenerateNodeDocTree(UK2Node* Node, FNodeProcessingState
 			AddMetaDataMapToNode(NodeDocFile, UMetaData::GetMapForObject(Func));
 			NodeDocFile->AppendChildWithValue("autocast",
 											  Func->HasMetaData(TEXT("BlueprintAutocast")) ? "true" : "false");
-			TArray<FStringFormatArg> Args;
 
-			if (FProperty* RetProp = Func->GetReturnProperty())
-			{
-				FString ExtendedParameters;
-				FString RetValType = RetProp->GetCPPType(&ExtendedParameters);
-				Args.Add({RetValType + ExtendedParameters});
-			}
-			else
-			{
-				Args.Add({"void"});
-			}
-			Args.Add({Func->GetAuthoredName()});
-			FString FuncParams;
-			for (TFieldIterator<FProperty> PropertyIterator(Func);
-				 PropertyIterator && (PropertyIterator->PropertyFlags & CPF_Parm | CPF_Parm); ++PropertyIterator)
-			{
-				FProperty* FuncParameter = *PropertyIterator;
-
-				// Skip the return type as we handled it earlier
-				if (FuncParameter->HasAllPropertyFlags(CPF_ReturnParm))
-				{
-					continue;
-				}
-
-				FString ExtendedParameters;
-				FString ParamType = FuncParameter->GetCPPType(&ExtendedParameters);
-
-				FString ParamString = ParamType + ExtendedParameters + " " + FuncParameter->GetAuthoredName();
-				if (FuncParams.Len() != 0)
-				{
-					FuncParams.Append(", ");
-				}
-				FuncParams.Append(ParamString);
-			}
-			Args.Add({FuncParams});
-			Args.Add({Func->HasAnyFunctionFlags(FUNC_Const) ? " const" : ""});
-			NodeDocFile->AppendChildWithValueEscaped("rawsignature", FString::Format(TEXT("{0} {1}({2}){3}"), Args));
+			NodeDocFile->AppendChildWithValueEscaped("rawsignature", GenerateFunctionSignatureString(Func));
 
 			auto Tags = Detail::ParseDoxygenTagsForString(Func->GetMetaData(TEXT("Comment")));
 			if (Tags.Num())
@@ -671,6 +631,55 @@ bool FNodeDocsGenerator::GenerateNodeDocTree(UK2Node* Node, FNodeProcessingState
 	return true;
 }
 
+FString FNodeDocsGenerator::GenerateFunctionSignatureString(UFunction* Func, bool bUseFuncPtrStyle /*= false*/)
+{
+	TArray<FStringFormatArg> Args;
+
+	if (FProperty* RetProp = Func->GetReturnProperty())
+	{
+		FString ExtendedParameters;
+		FString RetValType = RetProp->GetCPPType(&ExtendedParameters);
+		Args.Add({RetValType + ExtendedParameters});
+	}
+	else
+	{
+		Args.Add({"void"});
+	}
+	Args.Add({Func->GetAuthoredName()});
+	FString FuncParams;
+	for (TFieldIterator<FProperty> PropertyIterator(Func);
+		 PropertyIterator && (PropertyIterator->PropertyFlags & CPF_Parm | CPF_Parm); ++PropertyIterator)
+	{
+		FProperty* FuncParameter = *PropertyIterator;
+
+		// Skip the return type as we handled it earlier
+		if (FuncParameter->HasAllPropertyFlags(CPF_ReturnParm))
+		{
+			continue;
+		}
+
+		FString ExtendedParameters;
+		FString ParamType = FuncParameter->GetCPPType(&ExtendedParameters);
+
+		FString ParamString = ParamType + ExtendedParameters + " " + FuncParameter->GetAuthoredName();
+		if (FuncParams.Len() != 0)
+		{
+			FuncParams.Append(", ");
+		}
+		FuncParams.Append(ParamString);
+	}
+	Args.Add({FuncParams});
+	Args.Add({Func->HasAnyFunctionFlags(FUNC_Const) ? " const" : ""});
+	if (bUseFuncPtrStyle)
+	{
+		return FString::Format(TEXT("{0}({2})"), Args);
+	}
+	else
+	{
+		return FString::Format(TEXT("{0} {1}({2}){3}"), Args);
+	}
+}
+
 bool FNodeDocsGenerator::GenerateTypeMembers(UObject* Type)
 {
 	if (Type)
@@ -704,7 +713,8 @@ bool FNodeDocsGenerator::GenerateTypeMembers(UObject* Type)
 			auto MemberList = ClassDocTree->FindChildByName("fields");
 			for (TFieldIterator<FProperty> PropertyIterator(ClassInstance); PropertyIterator; ++PropertyIterator)
 			{
-				if ((PropertyIterator->PropertyFlags & CPF_BlueprintVisible) ||
+				if (CastField<FMulticastDelegateProperty>(*PropertyIterator) ||
+					(PropertyIterator->PropertyFlags & CPF_BlueprintVisible) ||
 					(PropertyIterator->HasAnyPropertyFlags(CPF_Deprecated)))
 				{
 					bClassShouldBeDocumented = true;
@@ -750,6 +760,20 @@ bool FNodeDocsGenerator::GenerateTypeMembers(UObject* Type)
 							Member->AppendChildWithValue("access_specifier", "unknown");
 						}
 					}
+					Member->AppendChildWithValue("blueprint_visible",
+												 PropertyIterator->HasAnyPropertyFlags(CPF_BlueprintVisible) ? "true"
+																											 : "false");
+					if (FMulticastDelegateProperty* AsMulticastDelegate =
+							CastField<FMulticastDelegateProperty>(*PropertyIterator))
+					{
+						if (AsMulticastDelegate->SignatureFunction)
+						{
+							Member->AppendChildWithValue(
+								"delegate_signature",
+								GenerateFunctionSignatureString(AsMulticastDelegate->SignatureFunction, true));
+						}
+					}
+
 					const FString& Comment = PropertyIterator->GetMetaData(TEXT("Comment"));
 					auto MemberTags = Detail::ParseDoxygenTagsForString(Comment);
 					if (MemberTags.Num())

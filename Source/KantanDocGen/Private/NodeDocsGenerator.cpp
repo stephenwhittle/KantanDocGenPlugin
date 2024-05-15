@@ -123,6 +123,7 @@ UK2Node* FNodeDocsGenerator::GT_InitializeForSpawner(UBlueprintNodeSpawner* Spaw
 	}
 
 	OutState = FNodeProcessingState();
+	OutState.NodeClassId = GetClassDocId(AssociatedClass);
 	OutState.ClassDocsPath = OutputDir / GetClassDocId(AssociatedClass);
 	OutState.ClassDocTree = ClassDocTreeMap.FindChecked(AssociatedClass);
 
@@ -143,11 +144,14 @@ bool FNodeDocsGenerator::GT_Finalize(FString OutputPath)
 	{
 		return false;
 	}
+	if (!SaveDelegateDocFile(OutputPath))
+	{
+		return false;
+	}
 	if (!SaveIndexFile(OutputPath))
 	{
 		return false;
 	}
-
 	return true;
 }
 
@@ -228,7 +232,7 @@ bool FNodeDocsGenerator::GenerateNodeImage(UEdGraphNode* Node, FNodeProcessingSt
 	{
 		IFileManager::Get().MakeDirectory(*ImageBasePath, true);
 	}
-	FString ImgFilename = FString::Printf(TEXT("nd_img_%s.png"), *NodeName);
+	FString ImgFilename = FString::Printf(TEXT("nd_img_%s_%s.png"),*State.NodeClassId, *NodeName);
 	FString ScreenshotSaveName = ImageBasePath / ImgFilename;
 
 	TUniquePtr<FImageWriteTask> ImageTask = MakeUnique<FImageWriteTask>();
@@ -303,7 +307,7 @@ bool ExtractPinInformation(UEdGraphPin* Pin, FString& OutName, FString& OutType,
 	}
 
 	OutType = UEdGraphSchema_K2::TypeToText(Pin->PinType).ToString();
-
+	
 	return true;
 }
 
@@ -314,6 +318,7 @@ TSharedPtr<DocTreeNode> FNodeDocsGenerator::InitIndexDocTree(FString const& Inde
 	IndexDocTree->AppendChild(TEXT("classes"));
 	IndexDocTree->AppendChild(TEXT("structs"));
 	IndexDocTree->AppendChild(TEXT("enums"));
+	IndexDocTree->AppendChild(TEXT("delegates"));
 	return IndexDocTree;
 }
 
@@ -415,6 +420,13 @@ TSharedPtr<DocTreeNode> FNodeDocsGenerator::InitEnumDocTree(UEnum* Enum)
 	return EnumDoc;
 }
 
+TSharedPtr<DocTreeNode> FNodeDocsGenerator::InitDelegateDocTree(UFunction* SignatureFunction)
+{
+	TSharedPtr<DocTreeNode> DelegateDoc = MakeShared<DocTreeNode>();
+	DelegateDoc->AppendChildWithValueEscaped(TEXT("id"), GetDelegateDocId(SignatureFunction));
+	return DelegateDoc;
+}
+
 void FNodeDocsGenerator::AddMetaDataMapToNode(TSharedPtr<DocTreeNode> Node, const TMap<FName, FString>* MetaDataMap)
 {
 	if (MetaDataMap)
@@ -468,6 +480,14 @@ bool FNodeDocsGenerator::UpdateIndexDocWithEnum(TSharedPtr<DocTreeNode> DocTree,
 		DocTreeEnum->AppendChildWithValueEscaped(TEXT("display_name"), Enum->GetName());
 		// FName::NameToDisplayString(Enum->GetName(), false));
 	}
+	return true;
+}
+
+bool FNodeDocsGenerator::UpdateIndexDocWithDelegate(TSharedPtr<DocTreeNode> DocTree, UFunction* SignatureFunction)
+{
+	TSharedPtr<DocTreeNode> DocTreeDelegatesElement = DocTree->FindChildByName("delegates");
+	auto DocTreeDelegate = DocTreeDelegatesElement->AppendChild("delegate");
+	DocTreeDelegate->AppendChildWithValueEscaped(TEXT("id"), GetDelegateDocId(SignatureFunction));
 	return true;
 }
 
@@ -590,9 +610,65 @@ bool FNodeDocsGenerator::GenerateNodeDocTree(UK2Node* Node, FNodeProcessingState
 				FString PinName, PinType, PinDesc;
 				ExtractPinInformation(Pin, PinName, PinType, PinDesc);
 
-				Input->AppendChildWithValueEscaped(TEXT("name"), PinName);
-				Input->AppendChildWithValueEscaped(TEXT("type"), PinType);
-				Input->AppendChildWithValueEscaped(TEXT("description"), PinDesc);
+				bool bFoundFuncParamForPin = false;
+				if (auto FuncNode = Cast<UK2Node_CallFunction>(Node))
+				{
+					if (UFunction* ActualFunction = FuncNode->GetTargetFunction())
+					{
+						if (FProperty* FuncParamProperty = ActualFunction->FindPropertyByName(Pin->PinName))
+						{
+							bFoundFuncParamForPin = true;
+
+							if (FDelegateProperty* DelegateParamProperty =
+									CastField<FDelegateProperty>(FuncParamProperty))
+							{
+								FString DelegateId = GetDelegateDocId(DelegateParamProperty->SignatureFunction);
+								// Add delegate type to map in the generator
+								if (!DelegateDocTreeMap.Contains(DelegateId))
+								{
+									DelegateDocTreeMap.Add(
+										DelegateId, InitDelegateDocTree(DelegateParamProperty->SignatureFunction));
+									UpdateIndexDocWithDelegate(IndexTree, DelegateParamProperty->SignatureFunction);
+								}
+								Input->AppendChildWithValueEscaped(TEXT("name"), PinName);
+								Input->AppendChildWithValueEscaped(TEXT("type"), DelegateId);
+								Input->AppendChildWithValueEscaped(TEXT("description"), PinDesc);
+							}
+							else
+							{
+								FString ExtendedParameters;
+								FString ParamType = FuncParamProperty->GetCPPType(&ExtendedParameters);
+
+								Input->AppendChildWithValueEscaped(TEXT("name"),
+																	 FuncParamProperty->GetAuthoredName());
+								Input->AppendChildWithValueEscaped(TEXT("type"), ParamType + ExtendedParameters);
+								Input->AppendChildWithValueEscaped(TEXT("description"), PinDesc);
+							}
+						}
+					}
+				}
+
+				if (!bFoundFuncParamForPin)
+				{
+					bool bIsTargetPin = false;
+					if (auto K2_Schema = Cast<UEdGraphSchema_K2>(Node->GetSchema()))
+					{
+						if (Pin == Node->FindPin(K2_Schema->PN_Self))
+						{
+							bIsTargetPin = true;
+							Input->AppendChildWithValueEscaped(TEXT("name"), PinName);
+							Input->AppendChildWithValueEscaped(TEXT("type"), Pin->PinType.PinSubCategoryObject->GetName());
+							Input->AppendChildWithValueEscaped(TEXT("description"), "");
+						}
+
+					}
+					if (!bIsTargetPin)
+					{
+						Input->AppendChildWithValueEscaped(TEXT("name"), PinName);
+						Input->AppendChildWithValueEscaped(TEXT("type"), PinType);
+						Input->AppendChildWithValueEscaped(TEXT("description"), PinDesc);
+					}
+				}
 			}
 		}
 	}
@@ -615,7 +691,7 @@ bool FNodeDocsGenerator::GenerateNodeDocTree(UK2Node* Node, FNodeProcessingState
 			}
 		}
 	}
-
+	// Serialize the node document immediately, rather than queueing like for types
 	for (const auto& FactoryObject : OutputFormats)
 	{
 		auto Serializer = FactoryObject->CreateSerializer();
@@ -737,29 +813,31 @@ bool FNodeDocsGenerator::GenerateTypeMembers(UObject* Type)
 					Member->AppendChildWithValue(
 						"instance_editable",
 						PropertyIterator->HasAnyPropertyFlags(CPF_DisableEditOnInstance) ? "false" : "true");
+
+					// Default to public access
+					FString ComputedAccessSpecifier = "public";
+					// Native properties have property flags for access specifiers
+					if (PropertyIterator->HasAnyPropertyFlags(CPF_NativeAccessSpecifierPrivate))
+					{
+						ComputedAccessSpecifier = "private";
+					}
+					else if (PropertyIterator->HasAnyPropertyFlags(CPF_NativeAccessSpecifierProtected))
+					{
+						ComputedAccessSpecifier = "protected";
+					}
+
+					// Blueprint properties either have private, protected or null metadata - this implementation
+					// presumes that BP specifiers override native ones though I doubt thats actually possible
 					if (PropertyIterator->GetBoolMetaData(FBlueprintMetadata::MD_Private))
 					{
-						Member->AppendChildWithValue("access_specifier", "private");
+						ComputedAccessSpecifier = "private";
 					}
-					else
+					else if (PropertyIterator->GetBoolMetaData(FBlueprintMetadata::MD_Protected))
 					{
-						if (PropertyIterator->HasAnyPropertyFlags(CPF_NativeAccessSpecifierPrivate))
-						{
-							Member->AppendChildWithValue("access_specifier", "private");
-						}
-						else if (PropertyIterator->HasAnyPropertyFlags(CPF_NativeAccessSpecifierProtected))
-						{
-							Member->AppendChildWithValue("access_specifier", "protected");
-						}
-						else if (PropertyIterator->HasAnyPropertyFlags(CPF_NativeAccessSpecifierPublic))
-						{
-							Member->AppendChildWithValue("access_specifier", "public");
-						}
-						else
-						{
-							Member->AppendChildWithValue("access_specifier", "unknown");
-						}
+						ComputedAccessSpecifier = "protected";
 					}
+					Member->AppendChildWithValue("access_specifier", ComputedAccessSpecifier);
+
 					Member->AppendChildWithValue("blueprint_visible",
 												 PropertyIterator->HasAnyPropertyFlags(CPF_BlueprintVisible) ? "true"
 																											 : "false");
@@ -1052,6 +1130,27 @@ bool FNodeDocsGenerator::SaveStructDocFile(FString const& OutDir)
 	return true;
 }
 
+bool FNodeDocsGenerator::SaveDelegateDocFile(FString const& OutDir)
+{
+	for (const auto& Entry : DelegateDocTreeMap)
+	{
+		auto DelegateId = Entry.Key;
+		auto Path = OutDir / DelegateId;
+		if (!IFileManager::Get().DirectoryExists(*Path))
+		{
+			IFileManager::Get().MakeDirectory(*Path, true);
+		}
+
+		for (const auto& FactoryObject : OutputFormats)
+		{
+			auto Serializer = FactoryObject->CreateSerializer();
+			Entry.Value->SerializeWith(Serializer);
+			Serializer->SaveToFile(Path, DelegateId);
+		}
+	}
+	return true;
+}
+
 void FNodeDocsGenerator::AdjustNodeForSnapshot(UEdGraphNode* Node)
 {
 	// Hide default value box containing 'self' for Target pin
@@ -1081,6 +1180,16 @@ FString FNodeDocsGenerator::GetNodeDocId(UEdGraphNode* Node)
 {
 	// @TODO: Not sure this is right thing to use
 	return Node->GetDocumentationExcerptName();
+}
+FString FNodeDocsGenerator::GetDelegateDocId(UFunction* SignatureFunction, bool bStripMulticast)
+{
+	FString FuncString = SignatureFunction->GetAuthoredName();
+	FuncString.RemoveFromEnd("__DelegateSignature");
+	if (bStripMulticast)
+	{
+		FuncString.RemoveFromEnd("Multicast");
+	}
+	return FuncString;
 }
 
 #include "BlueprintDelegateNodeSpawner.h"

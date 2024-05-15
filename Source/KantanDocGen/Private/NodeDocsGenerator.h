@@ -34,12 +34,13 @@ public:
 		FString ClassDocsPath;
 		FString RelImageBasePath;
 		FString ImageFilename;
-
+		FString NodeClassId;
 		FNodeProcessingState():
 			ClassDocTree()
 			, ClassDocsPath()
 			, RelImageBasePath()
 			, ImageFilename()
+			, NodeClassId()
 		{}
 	};
 
@@ -64,21 +65,26 @@ protected:
 	bool SaveClassDocFile(FString const& OutDir);
 	bool SaveEnumDocFile(FString const& OutDir);
 	bool SaveStructDocFile(FString const& OutDir);
+	bool SaveDelegateDocFile(FString const& OutDir);
 
 	TSharedPtr<DocTreeNode> InitIndexDocTree(FString const& IndexTitle);
 	TSharedPtr<DocTreeNode> InitClassDocTree(UClass* Class);
 	TSharedPtr<DocTreeNode> InitStructDocTree(UScriptStruct* Struct);
 	TSharedPtr<DocTreeNode> InitEnumDocTree(UEnum* Enum);
+	TSharedPtr<DocTreeNode> InitDelegateDocTree(UFunction* SignatureFunction);
+
 	void AddMetaDataMapToNode(TSharedPtr<DocTreeNode> Node, const TMap<FName, FString>* MetaDataMap);
 	FString GenerateFunctionSignatureString(UFunction* Func, bool bUseFuncPtrStyle = false);
 	bool UpdateIndexDocWithClass(TSharedPtr<DocTreeNode> DocTree, UClass* Class);
 	bool UpdateIndexDocWithStruct(TSharedPtr<DocTreeNode> DocTree, UStruct* Struct);
 	bool UpdateIndexDocWithEnum(TSharedPtr<DocTreeNode> DocTree, UEnum* Enum);
+	bool UpdateIndexDocWithDelegate(TSharedPtr<DocTreeNode> DocTree, UFunction* SignatureFunction);
 	bool UpdateClassDocWithNode(TSharedPtr<DocTreeNode> DocTree, UEdGraphNode* Node);
 	
 	static void AdjustNodeForSnapshot(UEdGraphNode* Node);
 	static FString GetClassDocId(UClass* Class);
 	static FString GetNodeDocId(UEdGraphNode* Node);
+	FString GetDelegateDocId(UFunction* SignatureFunction, bool bStripMulticast = true);
 	static UClass* MapToAssociatedClass(UK2Node* NodeInst, UObject* Source);
 	static bool IsSpawnerDocumentable(UBlueprintNodeSpawner* Spawner, bool bIsBlueprint);
 
@@ -92,6 +98,7 @@ protected:
 	TMap<TWeakObjectPtr<UClass>, TSharedPtr<DocTreeNode>> ClassDocTreeMap;
 	TMap<TWeakObjectPtr<UStruct>, TSharedPtr<DocTreeNode>> StructDocTreeMap;
 	TMap<TWeakObjectPtr<UEnum>, TSharedPtr<DocTreeNode>> EnumDocTreeMap;
+	TMap<FString, TSharedPtr<DocTreeNode>> DelegateDocTreeMap;
 	TArray<UDocGenOutputFormatFactoryBase*> OutputFormats;
 	FString OutputDir;
 	bool SaveAllFormats(FString const& OutDir, TSharedPtr<DocTreeNode> Document){ return false; };

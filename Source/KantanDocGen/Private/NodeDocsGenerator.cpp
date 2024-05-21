@@ -197,8 +197,20 @@ bool FNodeDocsGenerator::GenerateNodeImage(UEdGraphNode* Node, FNodeProcessingSt
 		const bool bUseGammaCorrection = false;
 		FWidgetRenderer Renderer(false);
 		Renderer.SetIsPrepassNeeded(true);
-		auto RenderTarget = Renderer.DrawWidget(NodeWidget.ToSharedRef(), DrawSize);
-		auto Desired = NodeWidget->GetDesiredSize();
+		Renderer.ViewOffset = FVector2D(8,8);
+
+		const bool bIsLinearSpace = !bUseGammaCorrection;
+		const EPixelFormat PixelFormat = FSlateApplication::Get().GetRenderer()->GetSlateRecommendedColorFormat();
+		UTextureRenderTarget2D* RenderTarget = NewObject<UTextureRenderTarget2D>();
+		RenderTarget->Filter = TF_Bilinear;
+		RenderTarget->ClearColor = FLinearColor(38/255.f,38/255.f,38/255.f);
+		RenderTarget->SRGB = bIsLinearSpace;
+		RenderTarget->TargetGamma = 1;
+		RenderTarget->InitCustomFormat(DrawSize.X, DrawSize.Y, PixelFormat, bIsLinearSpace);
+		RenderTarget->UpdateResourceImmediate(true);
+
+		Renderer.DrawWidget(RenderTarget, NodeWidget.ToSharedRef(), DrawSize,0, false);
+		auto Desired = NodeWidget->GetDesiredSize() + FVector2D(16,16);
 #if UE_VERSION_NEWER_THAN(5, 0, 0)
 		FlushRenderingCommands();
 #else 
@@ -232,7 +244,7 @@ bool FNodeDocsGenerator::GenerateNodeImage(UEdGraphNode* Node, FNodeProcessingSt
 	{
 		IFileManager::Get().MakeDirectory(*ImageBasePath, true);
 	}
-	FString ImgFilename = FString::Printf(TEXT("nd_img_%s_%s.png"),*State.NodeClassId, *NodeName);
+	FString ImgFilename = FString::Printf(TEXT("nd_img_%s_%s.png"), *State.NodeClassId, *NodeName);
 	FString ScreenshotSaveName = ImageBasePath / ImgFilename;
 
 	TUniquePtr<FImageWriteTask> ImageTask = MakeUnique<FImageWriteTask>();
@@ -249,6 +261,10 @@ bool FNodeDocsGenerator::GenerateNodeImage(UEdGraphNode* Node, FNodeProcessingSt
 		{
 			if (Pixel.A >= 90)
 			{
+				/*float NewAlpha = 1.0f - (float(Pixel.A) / 255.0f);
+				Pixel.R = Pixel.R + (Pixel.A / 2) * NewAlpha;
+				Pixel.G = Pixel.G + (Pixel.A / 2) * NewAlpha;
+				Pixel.B = Pixel.B + (Pixel.A / 2) * NewAlpha;*/
 				Pixel.A = 255;
 			}
 		}
@@ -307,7 +323,7 @@ bool ExtractPinInformation(UEdGraphPin* Pin, FString& OutName, FString& OutType,
 	}
 
 	OutType = UEdGraphSchema_K2::TypeToText(Pin->PinType).ToString();
-	
+
 	return true;
 }
 
@@ -639,8 +655,7 @@ bool FNodeDocsGenerator::GenerateNodeDocTree(UK2Node* Node, FNodeProcessingState
 								FString ExtendedParameters;
 								FString ParamType = FuncParamProperty->GetCPPType(&ExtendedParameters);
 
-								Input->AppendChildWithValueEscaped(TEXT("name"),
-																	 FuncParamProperty->GetAuthoredName());
+								Input->AppendChildWithValueEscaped(TEXT("name"), FuncParamProperty->GetAuthoredName());
 								Input->AppendChildWithValueEscaped(TEXT("type"), ParamType + ExtendedParameters);
 								Input->AppendChildWithValueEscaped(TEXT("description"), PinDesc);
 							}
@@ -657,10 +672,10 @@ bool FNodeDocsGenerator::GenerateNodeDocTree(UK2Node* Node, FNodeProcessingState
 						{
 							bIsTargetPin = true;
 							Input->AppendChildWithValueEscaped(TEXT("name"), PinName);
-							Input->AppendChildWithValueEscaped(TEXT("type"), Pin->PinType.PinSubCategoryObject->GetName());
+							Input->AppendChildWithValueEscaped(TEXT("type"),
+															   Pin->PinType.PinSubCategoryObject->GetName());
 							Input->AppendChildWithValueEscaped(TEXT("description"), "");
 						}
-
 					}
 					if (!bIsTargetPin)
 					{
@@ -967,6 +982,52 @@ bool FNodeDocsGenerator::GenerateTypeMembers(UObject* Type)
 							FText::FromString(PropertyIterator->GetMetaData(FBlueprintMetadata::MD_DeprecationMessage));
 						Member->AppendChildWithValueEscaped("deprecated", DetailedMessage.ToString());
 					}
+
+					AddMetaDataMapToNode(Member, PropertyIterator->GetMetaDataMap());
+					Member->AppendChildWithValue("inherited",
+												 PropertyIterator->GetOwnerStruct() != Struct ? "true" : "false");
+					Member->AppendChildWithValue(
+						"instance_editable",
+						PropertyIterator->HasAnyPropertyFlags(CPF_DisableEditOnInstance) ? "false" : "true");
+
+					// Default to public access
+					FString ComputedAccessSpecifier = "public";
+					// Native properties have property flags for access specifiers
+					if (PropertyIterator->HasAnyPropertyFlags(CPF_NativeAccessSpecifierPrivate))
+					{
+						ComputedAccessSpecifier = "private";
+					}
+					else if (PropertyIterator->HasAnyPropertyFlags(CPF_NativeAccessSpecifierProtected))
+					{
+						ComputedAccessSpecifier = "protected";
+					}
+
+					// Blueprint properties either have private, protected or null metadata - this implementation
+					// presumes that BP specifiers override native ones though I doubt thats actually possible
+					if (PropertyIterator->GetBoolMetaData(FBlueprintMetadata::MD_Private))
+					{
+						ComputedAccessSpecifier = "private";
+					}
+					else if (PropertyIterator->GetBoolMetaData(FBlueprintMetadata::MD_Protected))
+					{
+						ComputedAccessSpecifier = "protected";
+					}
+					Member->AppendChildWithValue("access_specifier", ComputedAccessSpecifier);
+
+					Member->AppendChildWithValue("blueprint_visible",
+												 PropertyIterator->HasAnyPropertyFlags(CPF_BlueprintVisible) ? "true"
+																											 : "false");
+					if (FMulticastDelegateProperty* AsMulticastDelegate =
+							CastField<FMulticastDelegateProperty>(*PropertyIterator))
+					{
+						if (AsMulticastDelegate->SignatureFunction)
+						{
+							Member->AppendChildWithValue(
+								"delegate_signature",
+								GenerateFunctionSignatureString(AsMulticastDelegate->SignatureFunction, true));
+						}
+					}
+
 					const FString& CommentIterator = PropertyIterator->GetMetaData(TEXT("Comment"));
 					bool HasCommentIterator = CommentIterator.Len() > 0;
 					auto MemberTags = Detail::ParseDoxygenTagsForString(CommentIterator);

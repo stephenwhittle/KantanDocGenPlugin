@@ -197,20 +197,20 @@ bool FNodeDocsGenerator::GenerateNodeImage(UEdGraphNode* Node, FNodeProcessingSt
 		const bool bUseGammaCorrection = false;
 		FWidgetRenderer Renderer(false);
 		Renderer.SetIsPrepassNeeded(true);
-		Renderer.ViewOffset = FVector2D(8,8);
+		Renderer.ViewOffset = FVector2D(8, 8);
 
 		const bool bIsLinearSpace = !bUseGammaCorrection;
 		const EPixelFormat PixelFormat = FSlateApplication::Get().GetRenderer()->GetSlateRecommendedColorFormat();
 		UTextureRenderTarget2D* RenderTarget = NewObject<UTextureRenderTarget2D>();
 		RenderTarget->Filter = TF_Bilinear;
-		RenderTarget->ClearColor = FLinearColor(38/255.f,38/255.f,38/255.f);
+		RenderTarget->ClearColor = FLinearColor(38 / 255.f, 38 / 255.f, 38 / 255.f);
 		RenderTarget->SRGB = bIsLinearSpace;
 		RenderTarget->TargetGamma = 1;
 		RenderTarget->InitCustomFormat(DrawSize.X, DrawSize.Y, PixelFormat, bIsLinearSpace);
 		RenderTarget->UpdateResourceImmediate(true);
 
-		Renderer.DrawWidget(RenderTarget, NodeWidget.ToSharedRef(), DrawSize,0, false);
-		auto Desired = NodeWidget->GetDesiredSize() + FVector2D(16,16);
+		Renderer.DrawWidget(RenderTarget, NodeWidget.ToSharedRef(), DrawSize, 0, false);
+		auto Desired = NodeWidget->GetDesiredSize() + FVector2D(16, 16);
 #if UE_VERSION_NEWER_THAN(5, 0, 0)
 		FlushRenderingCommands();
 #else 
@@ -568,6 +568,8 @@ bool FNodeDocsGenerator::GenerateNodeDocTree(UK2Node* Node, FNodeProcessingState
 			NodeDocFile->AppendChildWithValueEscaped("rawcomment", Func->GetMetaData(TEXT("Comment")));
 			NodeDocFile->AppendChildWithValue("inherited", IsFunctionInherited(Func) ? "true" : "false");
 			NodeDocFile->AppendChildWithValue("static", Func->HasAnyFunctionFlags(FUNC_Static) ? "true" : "false");
+			NodeDocFile->AppendChildWithValue("blueprint_implementable",
+											  Func->HasAnyFunctionFlags(FUNC_BlueprintEvent) ? "true" : "false");
 			if (Func->HasAnyFunctionFlags(FUNC_Private))
 			{
 				NodeDocFile->AppendChildWithValue("access_specifier", "private");

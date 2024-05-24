@@ -229,7 +229,7 @@ void FDocGenTaskProcessor::ProcessTask(TSharedPtr<FDocGenTask> InTask)
 	int SuccessfulNodeCount = 0;
 	while (Current->Enumerators.Dequeue(Current->CurrentEnumerator))
 	{
-		while (Async(EAsyncExecution::TaskGraphMainThread, [GameThread_EnumerateNextObject]() {
+		while (auto ObjInst = Async(EAsyncExecution::TaskGraphMainThread, [GameThread_EnumerateNextObject]() {
 				   return GameThread_EnumerateNextObject();
 			   }).Get()) // Game thread: Enumerate next Obj, get spawner list for Obj, store as
 						 // array of weak ptrs.
@@ -238,7 +238,11 @@ void FDocGenTaskProcessor::ProcessTask(TSharedPtr<FDocGenTask> InTask)
 			{
 				return;
 			}
-
+			if (Current->SourceObject.IsValid())
+			{
+				Current->DocGen->GenerateWidgetImage(Current->SourceObject.Get());
+			}
+		
 			FNodeDocsGenerator::FNodeProcessingState NodeState;
 			while (auto NodeInst =
 					   Async(EAsyncExecution::TaskGraphMainThread, [&NodeState, GameThread_EnumerateNextNode]() {
@@ -265,6 +269,8 @@ void FDocGenTaskProcessor::ProcessTask(TSharedPtr<FDocGenTask> InTask)
 			}
 		}
 	}
+
+			
 	for (const auto& Type : Current->TypesToParseForMembers)
 	{
 		Current->DocGen->GenerateTypeMembers(Type.Get());

@@ -19,6 +19,7 @@
 #include "EdGraphSchema_K2.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "HighResScreenshot.h"
+#include "Input/HittestGrid.h"
 #include "K2Node_DynamicCast.h"
 #include "K2Node_Message.h"
 #include "KantanDocGenLog.h"
@@ -34,8 +35,13 @@
 #include "Stats/StatsMisc.h"
 #include "TextureResource.h"
 #include "ThreadingHelpers.h"
+#include "UMG/Public/Blueprint/UserWidget.h"
+#include "UMG/Public/Components/Widget.h"
 #include "UObject/MetaData.h"
 #include "WidgetBlueprint.h"
+
+#include "Components/TextBlock.h"
+#include "UMGEditor/Public/WidgetBlueprintEditorUtils.h"
 
 bool IsFunctionInherited(UFunction* Function)
 {
@@ -172,6 +178,218 @@ void FNodeDocsGenerator::CleanUp()
 		Graph->RemoveFromRoot();
 		Graph.Reset();
 	}
+}
+
+bool FNodeDocsGenerator::GenerateWidgetImage(UObject* ClassObject)
+{
+	UClass* AsClass = Cast<UClass>(ClassObject);
+	if (!AsClass)
+	{
+		if (UWidgetBlueprint* AsWidgetBP = Cast<UWidgetBlueprint>(ClassObject))
+		{
+			AsClass = AsWidgetBP->GeneratedClass;
+		}
+	}
+	if (!AsClass)
+	{
+		return false;
+	}
+	if (!AsClass->IsChildOf(UWidget::StaticClass()))
+	{
+		return false;
+	}
+	if (AsClass->HasAnyClassFlags(CLASS_Abstract))
+	{
+		return false;
+	}
+	const FVector2D DrawSize(2048.f, 2048.0f);
+
+	bool bSuccess = false;
+
+	FString ClassName = GetClassDocId(AsClass);
+
+	FIntRect Rect;
+
+	TUniquePtr<TImagePixelData<FColor>> PixelData;
+
+	auto RenderNodeResult = Async(EAsyncExecution::TaskGraphMainThread, [this, AsClass, DrawSize, &Rect, &PixelData] {
+		UWidget* ActualWidget = nullptr;
+
+		if (AsClass->GetName().Contains("ModioDefaultTextButton"))
+		{
+			UE_LOG(LogKantanDocGen, Warning, TEXT("test"));
+		}
+		if (AsClass->IsChildOf(UUserWidget::StaticClass()))
+		{
+			{
+				FMakeClassSpawnableOnScope TemporarilySpawnable(AsClass);
+				ActualWidget =
+					NewObject<UUserWidget>(GEditor->GetEditorWorldContext().World(), AsClass, FName(), RF_Transient);
+			}
+
+			// The preview widget should not be transactional.
+			ActualWidget->ClearFlags(RF_Transactional);
+
+			// Establish the widget as being in design time before initializing and before duplication
+			// (so that IsDesignTime is reliable within both calls to Initialize)
+			// The preview widget is also the outer widget that will update all child flags
+			ActualWidget->SetDesignerFlags(EWidgetDesignFlags::Designing | EWidgetDesignFlags::ExecutePreConstruct);
+			Cast<UUserWidget>(ActualWidget)->Initialize();
+			if (ULocalPlayer* Player = GEditor->GetEditorWorldContext().World()->GetFirstLocalPlayerFromController())
+			{
+				Cast<UUserWidget>(ActualWidget)->SetPlayerContext(FLocalPlayerContext(Player));
+			}
+
+			// ActualWidget = CreateWidget<UUserWidget>(GEditor->GetEditorWorldContext().World(), AsClass);
+		}
+		else
+		{
+			ActualWidget = NewObject<UWidget>(GetTransientPackage(), AsClass, NAME_None, RF_StrongRefOnFrame);
+			ActualWidget->OnCreationFromPalette();
+		}
+		const bool bUseGammaCorrection = false;
+		UTextureRenderTarget2D* RenderTarget2D = NewObject<UTextureRenderTarget2D>();
+		UE_LOG(LogKantanDocGen, Warning, TEXT("Widget Created"));
+		UE_LOG(LogKantanDocGen, Warning, TEXT("%s"), *AsClass->GetName());
+
+		TSharedPtr<SWidget> WindowContent = ActualWidget->TakeWidget();
+		ActualWidget->SynchronizeProperties();
+		UE_LOG(LogKantanDocGen, Warning, TEXT("TakeWidget Called"));
+
+		if (!WindowContent.IsValid())
+		{
+			return false;
+		}
+
+		TSharedRef<SVirtualWindow> Window = SNew(SVirtualWindow);
+		if (FSlateApplication::IsInitialized())
+		{
+			FSlateApplication::Get().RegisterVirtualWindow(Window);
+		}
+
+		TUniquePtr<FHittestGrid> HitTestGrid = MakeUnique<FHittestGrid>();
+		Window->Resize(DrawSize);
+		Window->SetContent(WindowContent.ToSharedRef());
+		Window->Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
+
+		Window->SetSizingRule(ESizingRule::Autosized);
+		Window->SlatePrepass(1.0f);
+		WindowContent->SlatePrepass(1.0f);
+		auto WindowGeo = FGeometry::MakeRoot(DrawSize, FSlateLayoutTransform());
+
+		FArrangedChildren TmpChildren = FArrangedChildren(EVisibility::Visible);
+		Window->ArrangeChildren(WindowGeo, TmpChildren, true);
+		WindowContent->Tick(WindowGeo, 1.f, 1.f);
+
+		Renderer.SetIsPrepassNeeded(true);
+		// Renderer.ViewOffset = FVector2D(8, 8);
+
+		const bool bIsLinearSpace = !bUseGammaCorrection;
+		const EPixelFormat PixelFormat = FSlateApplication::Get().GetRenderer()->GetSlateRecommendedColorFormat();
+		UTextureRenderTarget2D* RenderTarget = NewObject<UTextureRenderTarget2D>();
+		RenderTarget->Filter = TF_Bilinear;
+		RenderTarget->ClearColor = FLinearColor(38 / 255.f, 38 / 255.f, 38 / 255.f);
+		RenderTarget->SRGB = bIsLinearSpace;
+		RenderTarget->TargetGamma = 1;
+		RenderTarget->InitCustomFormat(DrawSize.X, DrawSize.Y, PixelFormat, bIsLinearSpace);
+		RenderTarget->UpdateResourceImmediate(true);
+		UE_LOG(LogKantanDocGen, Warning, TEXT("Prepass Done"));
+
+		Renderer.DrawWindow(RenderTarget, *HitTestGrid, Window, WindowGeo, FSlateRect(0, 0, 2048, 2048), 0);
+		UE_LOG(LogKantanDocGen, Warning, TEXT("Draw Done"));
+
+		// Renderer.DrawWidget(RenderTarget, WindowContent.ToSharedRef(), DrawSize, 1.0f, false);
+		auto innerWindowSize = WindowContent->GetDesiredSize();
+		Window->ComputeDesiredSize(1.0f);
+		FVector2D DesiredSizeWindow = WindowContent->GetDesiredSize();
+
+		if (DesiredSizeWindow.X <= SMALL_NUMBER || DesiredSizeWindow.Y <= SMALL_NUMBER)
+		{
+			return false;
+		}
+		/*
+
+		FVector2D ThumbnailSize(Width, Height);
+		TOptional<FWidgetBlueprintEditorUtils::FWidgetThumbnailProperties> ScaleAndOffset;
+		if (WidgetBlueprintToRender->ThumbnailSizeMode == EThumbnailPreviewSizeMode::Custom)
+		{
+			ScaleAndOffset = FWidgetBlueprintEditorUtils::DrawSWidgetInRenderTargetForThumbnail(
+				WidgetInstance, Canvas->GetRenderTarget(), ThumbnailSize, WidgetBlueprintToRender->ThumbnailCustomSize,
+				WidgetBlueprintToRender->ThumbnailSizeMode);
+		}
+
+*/
+
+#if UE_VERSION_NEWER_THAN(5, 0, 0)
+		FlushRenderingCommands();
+#else 
+		FlushRenderingCommands(true);
+#endif
+		FTextureRenderTargetResource* RTResource = RenderTarget->GameThread_GetRenderTargetResource();
+		Rect = FIntRect(0, 0, (int32) DesiredSizeWindow.X, (int32) DesiredSizeWindow.Y);
+		FReadSurfaceDataFlags ReadPixelFlags(RCM_UNorm);
+		ReadPixelFlags.SetLinearToGamma(true); // @TODO: is this gamma correction, or something else?
+
+		PixelData =
+			MakeUnique<TImagePixelData<FColor>>(FIntPoint((int32) DesiredSizeWindow.X, (int32) DesiredSizeWindow.Y));
+		PixelData->Pixels.SetNumUninitialized((int32) DesiredSizeWindow.X * (int32) DesiredSizeWindow.Y);
+
+		if (RTResource->ReadPixelsPtr(PixelData->Pixels.GetData(), ReadPixelFlags, Rect) == false)
+		{
+			UE_LOG(LogKantanDocGen, Warning, TEXT("Failed to read pixels for node image."));
+			return false;
+		}
+		BeginReleaseResource(RTResource);
+		return true;
+	});
+
+	if (!RenderNodeResult.Get())
+	{
+		return false;
+	}
+
+	FString ImageBasePath = OutputDir / ClassName / TEXT("img"); // State.RelImageBasePath;
+	if (!IFileManager::Get().DirectoryExists(*ImageBasePath))
+	{
+		IFileManager::Get().MakeDirectory(*ImageBasePath, true);
+	}
+	FString ImgFilename = FString::Printf(TEXT("class_img_%s.png"), *ClassName);
+	FString ScreenshotSaveName = ImageBasePath / ImgFilename;
+
+	TUniquePtr<FImageWriteTask> ImageTask = MakeUnique<FImageWriteTask>();
+	ImageTask->PixelData = MoveTemp(PixelData);
+	ImageTask->Filename = ScreenshotSaveName;
+	ImageTask->Format = EImageFormat::PNG;
+	ImageTask->CompressionQuality = (int32) EImageCompressionQuality::Default;
+	ImageTask->bOverwriteFile = true;
+	ImageTask->PixelPreProcessors.Add([](FImagePixelData* PixelData) {
+		check(PixelData->GetType() == EImagePixelType::Color);
+
+		TImagePixelData<FColor>* ColorData = static_cast<TImagePixelData<FColor>*>(PixelData);
+		for (FColor& Pixel : static_cast<TImagePixelData<FColor>*>(PixelData)->Pixels)
+		{
+			/*if (Pixel.A >= 90)
+			{
+				/ *float NewAlpha = 1.0f - (float(Pixel.A) / 255.0f);
+				Pixel.R = Pixel.R + (Pixel.A / 2) * NewAlpha;
+				Pixel.G = Pixel.G + (Pixel.A / 2) * NewAlpha;
+				Pixel.B = Pixel.B + (Pixel.A / 2) * NewAlpha;* /
+				Pixel.A = 255;
+			}*/
+		}
+	});
+
+	if (ImageTask->RunTask())
+	{
+		// Success!
+		bSuccess = true;
+	}
+	else
+	{
+		UE_LOG(LogKantanDocGen, Warning, TEXT("Failed to save screenshot image for node: %s"), *ClassName);
+	}
+
+	return bSuccess;
 }
 
 bool FNodeDocsGenerator::GenerateNodeImage(UEdGraphNode* Node, FNodeProcessingState& State)
@@ -363,7 +581,11 @@ TSharedPtr<DocTreeNode> FNodeDocsGenerator::InitClassDocTree(UClass* Class)
 		}
 		SuperClass = SuperClass->GetSuperClass();
 	}
-
+	UBlueprintGeneratedClass* AsGeneratedClass = Cast<UBlueprintGeneratedClass>(Class);
+	ClassDoc->AppendChildWithValue("blueprint_generated", AsGeneratedClass ? "true" : "false");
+	ClassDoc->AppendChildWithValue(
+		"widget_blueprint",
+		(AsGeneratedClass && Cast<UWidgetBlueprint>(AsGeneratedClass->ClassGeneratedBy)) ? "true" : "false");
 	AddMetaDataMapToNode(ClassDoc, &Metadata);
 
 	ClassDoc->AppendChild(TEXT("nodes"));

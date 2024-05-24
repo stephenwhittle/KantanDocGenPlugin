@@ -9,6 +9,7 @@
 #include "Modules/ModuleManager.h"
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "Slate/WidgetRenderer.h"
 
 
 class UClass;
@@ -23,7 +24,7 @@ class FNodeDocsGenerator
 {
 public:
 	FNodeDocsGenerator(const TArray<class UDocGenOutputFormatFactoryBase*>& OutputFormats)
-	:OutputFormats(OutputFormats)
+	:Renderer(false),OutputFormats(OutputFormats)
 	{}
 	~FNodeDocsGenerator();
 
@@ -55,6 +56,7 @@ public:
 	bool GenerateNodeImage(UEdGraphNode* Node, FNodeProcessingState& State);
 	bool GenerateNodeDocTree(UK2Node* Node, FNodeProcessingState& State);
 
+	bool GenerateWidgetImage(UObject* ClassObject);
 	
 	bool GenerateTypeMembers(UObject* Type);
 	/**/
@@ -92,7 +94,8 @@ protected:
 	TWeakObjectPtr< UBlueprint > DummyBP;
 	TWeakObjectPtr< UEdGraph > Graph;
 	TSharedPtr< class SGraphPanel > GraphPanel;
-
+	FWidgetRenderer Renderer;
+		
 	FString DocsTitle;
 	TSharedPtr<DocTreeNode> IndexTree;
 	TMap<TWeakObjectPtr<UClass>, TSharedPtr<DocTreeNode>> ClassDocTreeMap;

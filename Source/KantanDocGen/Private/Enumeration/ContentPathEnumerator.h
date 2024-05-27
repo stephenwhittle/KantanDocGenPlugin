@@ -23,13 +23,17 @@ public:
 		FName const& InPath
 	);
 
+
+ FString GetCurrentContextString() override;
+
 public:
 	virtual UObject* GetNext() override;
 	virtual float EstimateProgress() const override;
 	virtual int32 EstimatedSize() const override;
 
 protected:
-	void Prepass(FName const& Path);
+	FName Path;
+	void Prepass();
 
 protected:
 	TArray< FAssetData > AssetList;

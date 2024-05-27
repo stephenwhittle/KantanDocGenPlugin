@@ -244,6 +244,8 @@ void FDocGenTaskProcessor::ProcessTask(TSharedPtr<FDocGenTask> InTask)
 			}
 		
 			FNodeDocsGenerator::FNodeProcessingState NodeState;
+			Current->DocGen->ContextString = Current->CurrentEnumerator->GetCurrentContextString();
+				
 			while (auto NodeInst =
 					   Async(EAsyncExecution::TaskGraphMainThread, [&NodeState, GameThread_EnumerateNextNode]() {
 						   return GameThread_EnumerateNextNode(NodeState);
@@ -251,7 +253,6 @@ void FDocGenTaskProcessor::ProcessTask(TSharedPtr<FDocGenTask> InTask)
 			{
 				// NodeInst should hopefully not reference anything except stuff we control (ie graph object), and
 				// it's rooted so should be safe to deal with here
-
 				// Generate image
 				if (!Current->DocGen->GenerateNodeImage(NodeInst, NodeState))
 				{

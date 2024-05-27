@@ -110,6 +110,7 @@ public:
 	double GenerateNodeImageTime = 0.0;
 	double GenerateNodeDocsTime = 0.0;
 	//
+	FString ContextString;
 };
 
 

@@ -22,11 +22,17 @@ FContentPathEnumerator::FContentPathEnumerator(
 )
 {
 	CurIndex = 0;
-
-	Prepass(InPath);
+	Path = InPath;
+	Prepass();
 }
 
-void FContentPathEnumerator::Prepass(FName const& Path)
+
+FString FContentPathEnumerator::GetCurrentContextString()
+{
+	return Path.ToString();
+}
+
+void FContentPathEnumerator::Prepass()
 {
 	auto& AssetRegistryModule = FModuleManager::GetModuleChecked< FAssetRegistryModule >("AssetRegistry");
 	auto& AssetRegistry = AssetRegistryModule.Get();

@@ -13,11 +13,17 @@
 FNativeModuleEnumerator::FNativeModuleEnumerator(FName const& InModuleName)
 {
 	CurIndex = 0;
-
-	Prepass(InModuleName);
+	ModuleName = InModuleName;
+	Prepass();
 }
 
-void FNativeModuleEnumerator::Prepass(FName const& ModuleName)
+
+FString FNativeModuleEnumerator::GetCurrentContextString()
+{
+	return ModuleName.ToString();
+}
+
+void FNativeModuleEnumerator::Prepass()
 {
 	// For native package, all classes are already loaded so it's no problem to fully enumerate during prepass.
 	// That way we have more info for progress estimation.

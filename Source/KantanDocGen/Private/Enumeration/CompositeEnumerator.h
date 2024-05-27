@@ -8,14 +8,11 @@
 
 #include "ISourceObjectEnumerator.h"
 
-
-template < typename TChildEnum >
-class FCompositeEnumerator: public ISourceObjectEnumerator
+template<typename TChildEnum>
+class FCompositeEnumerator : public ISourceObjectEnumerator
 {
 public:
-	FCompositeEnumerator(
-		TArray< FName > const& InNames
-	)
+	FCompositeEnumerator(TArray<FName> const& InNames)
 	{
 		CurEnumIndex = 0;
 		TotalSize = 0;
@@ -24,18 +21,25 @@ public:
 		Prepass(InNames);
 	}
 
+	FString GetCurrentContextString() override
+	{
+		return ContextString;
+	}
+
 public:
 	virtual UObject* GetNext() override
 	{
-		while(CurEnumIndex < ChildEnumList.Num())
+		while (CurEnumIndex < ChildEnumList.Num())
 		{
-			if(auto Obj = ChildEnumList[CurEnumIndex]->GetNext())
+			ContextString = ChildEnumList[CurEnumIndex]->GetCurrentContextString();
+			if (auto Obj = ChildEnumList[CurEnumIndex]->GetNext())
 			{
 				return Obj;
 			}
 			else
 			{
 				Completed += ChildEnumList[CurEnumIndex]->EstimatedSize();
+
 				ChildEnumList[CurEnumIndex].Reset();
 				++CurEnumIndex;
 				continue;
@@ -47,9 +51,11 @@ public:
 
 	virtual float EstimateProgress() const override
 	{
-		if(CurEnumIndex < ChildEnumList.Num())
+		if (CurEnumIndex < ChildEnumList.Num())
 		{
-			return (float)(Completed + ChildEnumList[CurEnumIndex]->EstimateProgress() * ChildEnumList[CurEnumIndex]->EstimatedSize()) / TotalSize;
+			return (float) (Completed + ChildEnumList[CurEnumIndex]->EstimateProgress() *
+											ChildEnumList[CurEnumIndex]->EstimatedSize()) /
+				   TotalSize;
 		}
 		else
 		{
@@ -63,11 +69,12 @@ public:
 	}
 
 protected:
-	void Prepass(TArray< FName > const& Names)
+	FString ContextString;
+	void Prepass(TArray<FName> const& Names)
 	{
-		for(auto Name : Names)
+		for (auto Name : Names)
 		{
-			auto Child = MakeUnique< TChildEnum >(Name);
+			auto Child = MakeUnique<TChildEnum>(Name);
 			TotalSize += Child->EstimatedSize();
 
 			ChildEnumList.Add(MoveTemp(Child));
@@ -75,10 +82,8 @@ protected:
 	}
 
 protected:
-	TArray< TUniquePtr< ISourceObjectEnumerator > > ChildEnumList;
+	TArray<TUniquePtr<ISourceObjectEnumerator>> ChildEnumList;
 	int32 CurEnumIndex;
 	int32 TotalSize;
 	int32 Completed;
 };
-
-

@@ -16,14 +16,17 @@ public:
 		FName const& InModuleName
 	);
 
+
+ FString GetCurrentContextString() override;
+
 public:
 	virtual UObject* GetNext() override;
 	virtual float EstimateProgress() const override;
 	virtual int32 EstimatedSize() const override;
 
 protected:
-	void Prepass(FName const& ModuleName);
-
+	void Prepass();
+	FName ModuleName;
 protected:
 	TArray< TWeakObjectPtr< UObject > > ObjectList;
 	int32 CurIndex;

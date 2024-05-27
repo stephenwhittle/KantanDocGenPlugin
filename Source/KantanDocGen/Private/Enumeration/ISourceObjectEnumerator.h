@@ -17,7 +17,7 @@ public:
 	virtual UObject* GetNext() = 0;
 	virtual float EstimateProgress() const = 0;
 	virtual int32 EstimatedSize() const = 0;
-
+	virtual FString GetCurrentContextString() = 0;
 	virtual ~ISourceObjectEnumerator() {}
 };
 

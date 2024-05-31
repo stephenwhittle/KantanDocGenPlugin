@@ -586,6 +586,7 @@ TSharedPtr<DocTreeNode> FNodeDocsGenerator::InitClassDocTree(UClass* Class)
 		"widget_blueprint",
 		(AsGeneratedClass && Cast<UWidgetBlueprint>(AsGeneratedClass->ClassGeneratedBy)) ? "true" : "false");
 	AddMetaDataMapToNode(ClassDoc, &Metadata);
+	ClassDoc->AppendChildWithValue("class_path", Class->GetPathName());
 	ClassDoc->AppendChildWithValue("context_string", ContextString);
 	ClassDoc->AppendChild(TEXT("nodes"));
 	ClassDoc->AppendChild(TEXT("fields"));
@@ -635,7 +636,8 @@ TSharedPtr<DocTreeNode> FNodeDocsGenerator::InitStructDocTree(UScriptStruct* Str
 
 	AddMetaDataMapToNode(StructDoc, &Metadata);
 	StructDoc->AppendChildWithValue("context_string", ContextString);
-
+	StructDoc->AppendChildWithValue("class_path", Struct->GetPathName());
+	
 	StructDoc->AppendChild(TEXT("fields"));
 
 	return StructDoc;
@@ -655,6 +657,7 @@ TSharedPtr<DocTreeNode> FNodeDocsGenerator::InitEnumDocTree(UEnum* Enum)
 		EnumDoc->AppendChildWithValueEscaped(TEXT("display_name"), Enum->GetName());
 	}
 	EnumDoc->AppendChildWithValue("context_string", ContextString);
+	EnumDoc->AppendChildWithValue("class_path", Enum->GetPathName());
 
 	EnumDoc->AppendChild(TEXT("values"));
 	AddMetaDataMapToNode(EnumDoc, UMetaData::GetMapForObject(Enum));

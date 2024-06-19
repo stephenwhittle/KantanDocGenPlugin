@@ -562,8 +562,33 @@ TSharedPtr<DocTreeNode> FNodeDocsGenerator::InitClassDocTree(UClass* Class)
 	ClassDoc->AppendChildWithValueEscaped(TEXT("id"), GetClassDocId(Class));
 	ClassDoc->AppendChildWithValueEscaped(TEXT("display_name"),
 										  FBlueprintEditorUtils::GetFriendlyClassDisplayName(Class).ToString());
+	if (GetClassDocId(Class) == "WBP_ModioDefaultPlatformUsername")
+	{
+		UE_LOG(LogTemp, Display, TEXT("Test"));
+	}
+	TMap<FName, FString> Metadata {};
+	if (TMap<FName, FString>* ClassMetadata = UMetaData::GetMapForObject(Class))
+	{
+		Metadata = *ClassMetadata;
+	}
+	UBlueprintGeneratedClass* AsGeneratedClass = Cast<UBlueprintGeneratedClass>(Class);
+	// If we're a generated class, make sure to apply the ClassGeneratedBy's metadata over the top of ours before we
+	// merge in the metadata from the inheritance hierarchy
+	if (AsGeneratedClass)
+	{
+		UWidgetBlueprint* WidgetBP = Cast<UWidgetBlueprint>(AsGeneratedClass->ClassGeneratedBy);
+		if (WidgetBP)
+		{
+			if (TMap<FName, FString>* ClassGeneratedByMetadata = UMetaData::GetMapForObject(WidgetBP))
+			{
+				if (ClassGeneratedByMetadata->Num())
+				{
+					Metadata.Append(*ClassGeneratedByMetadata);
+				}
+			}
+		}
+	}
 
-	TMap<FName, FString> Metadata = *UMetaData::GetMapForObject(Class);
 	UClass* SuperClass = Class->GetSuperClass();
 	auto ChildClassNode = ClassDoc;
 	while (SuperClass)
@@ -572,19 +597,22 @@ TSharedPtr<DocTreeNode> FNodeDocsGenerator::InitClassDocTree(UClass* Class)
 		ChildClassNode->AppendChildWithValueEscaped(TEXT("id"), GetClassDocId(SuperClass));
 		ChildClassNode->AppendChildWithValueEscaped(
 			TEXT("display_name"), FBlueprintEditorUtils::GetFriendlyClassDisplayName(SuperClass).ToString());
-		TMap<FName, FString> SuperMetadata = *UMetaData::GetMapForObject(SuperClass);
-		if (SuperMetadata.Num())
+
+		if (TMap<FName, FString>* SuperMetadata = UMetaData::GetMapForObject(SuperClass))
 		{
-			SuperMetadata.Append(Metadata);
-			Metadata = SuperMetadata;
+			if (SuperMetadata->Num())
+			{
+				SuperMetadata->Append(Metadata);
+				Metadata = *SuperMetadata;
+			}
 		}
 		SuperClass = SuperClass->GetSuperClass();
 	}
-	UBlueprintGeneratedClass* AsGeneratedClass = Cast<UBlueprintGeneratedClass>(Class);
 	ClassDoc->AppendChildWithValue("blueprint_generated", AsGeneratedClass ? "true" : "false");
 	ClassDoc->AppendChildWithValue(
 		"widget_blueprint",
-		(AsGeneratedClass && Cast<UWidgetBlueprint>(AsGeneratedClass->ClassGeneratedBy)) ? "true" : "false");
+		(AsGeneratedClass && Cast<UWidgetBlueprint>(AsGeneratedClass->ClassGeneratedBy) ? "true" : "false"));
+
 	AddMetaDataMapToNode(ClassDoc, &Metadata);
 	ClassDoc->AppendChildWithValue("class_path", Class->GetPathName());
 	ClassDoc->AppendChildWithValue("context_string", ContextString);

@@ -144,7 +144,6 @@ void FKantanDocGenModule::ShowDocGenUI()
 									 .Title(WindowTitle)
 									 .MinWidth(400.0f)
 									 .MinHeight(300.0f)
-									 .MaxHeight(600.0f)
 									 .SupportsMaximize(false)
 									 .SupportsMinimize(false)
 									 .SizingRule(ESizingRule::Autosized);

@@ -368,6 +368,7 @@ void FDocGenTaskProcessor::ProcessTask(TSharedPtr<FDocGenTask> InTask)
 		Current->Task->NotifySetCompletionState(SNotificationItem::CS_Success);
 		Current->Task->NotifySetHyperlink(FSimpleDelegate::CreateLambda(OnHyperlinkClicked), HyperlinkText);
 		Current->Task->NotifyExpireFadeOut();
+		Current->Task.Reset();
 	});
 }
 

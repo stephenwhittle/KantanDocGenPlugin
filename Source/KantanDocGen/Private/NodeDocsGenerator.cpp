@@ -63,7 +63,30 @@ bool IsFunctionInherited(UFunction* Function)
 	}
 	return bIsBpInheritedFunc;
 }
+bool GetClassDisplayName(UClass* TargetClass, FText& DisplayName)
+{
+	if (!TargetClass)
+	{
+		return false;
+	}
 
+	static const FString Namespace = TEXT("UObjectDisplayNames");
+	static const FName NAME_DisplayName(TEXT("DisplayName"));
+
+	const FString Key = TargetClass->GetFullGroupName(false);
+
+	FString NativeDisplayName = TargetClass->GetMetaData(NAME_DisplayName);
+	if (NativeDisplayName.IsEmpty())
+	{
+		FString Name = TargetClass->GetName();
+		Name.RemoveFromEnd(TEXT("_C"));
+		Name.RemoveFromStart(TEXT("SKEL_"));
+		DisplayName = FText::FromString(Name);
+		return true;
+	}
+
+	return FText::FindText(Namespace, Key, /*OUT*/ DisplayName, &NativeDisplayName);
+}
 FNodeDocsGenerator::~FNodeDocsGenerator()
 {
 	CleanUp();
@@ -560,12 +583,9 @@ TSharedPtr<DocTreeNode> FNodeDocsGenerator::InitClassDocTree(UClass* Class)
 	TSharedPtr<DocTreeNode> ClassDoc = MakeShared<DocTreeNode>();
 	ClassDoc->AppendChildWithValueEscaped(TEXT("docs_name"), DocsTitle);
 	ClassDoc->AppendChildWithValueEscaped(TEXT("id"), GetClassDocId(Class));
-	ClassDoc->AppendChildWithValueEscaped(TEXT("display_name"),
-										  FBlueprintEditorUtils::GetFriendlyClassDisplayName(Class).ToString());
-	if (GetClassDocId(Class) == "WBP_ModioDefaultPlatformUsername")
-	{
-		UE_LOG(LogTemp, Display, TEXT("Test"));
-	}
+	FText DisplayName = FText::FromString(GetClassDocId(Class));
+	GetClassDisplayName(Class, DisplayName);
+	ClassDoc->AppendChildWithValueEscaped(TEXT("display_name"), DisplayName.ToString());
 	TMap<FName, FString> Metadata {};
 	if (TMap<FName, FString>* ClassMetadata = UMetaData::GetMapForObject(Class))
 	{
@@ -595,8 +615,9 @@ TSharedPtr<DocTreeNode> FNodeDocsGenerator::InitClassDocTree(UClass* Class)
 	{
 		ChildClassNode = ChildClassNode->AppendChild(TEXT("parent_class"));
 		ChildClassNode->AppendChildWithValueEscaped(TEXT("id"), GetClassDocId(SuperClass));
-		ChildClassNode->AppendChildWithValueEscaped(
-			TEXT("display_name"), FBlueprintEditorUtils::GetFriendlyClassDisplayName(SuperClass).ToString());
+		FText SuperClassDisplayName = FText::FromString(GetClassDocId(SuperClass));
+		GetClassDisplayName(SuperClass, SuperClassDisplayName);
+		ChildClassNode->AppendChildWithValueEscaped(TEXT("display_name"), SuperClassDisplayName.ToString());
 
 		if (TMap<FName, FString>* SuperMetadata = UMetaData::GetMapForObject(SuperClass))
 		{
@@ -665,7 +686,7 @@ TSharedPtr<DocTreeNode> FNodeDocsGenerator::InitStructDocTree(UScriptStruct* Str
 	AddMetaDataMapToNode(StructDoc, &Metadata);
 	StructDoc->AppendChildWithValue("context_string", ContextString);
 	StructDoc->AppendChildWithValue("class_path", Struct->GetPathName());
-	
+
 	StructDoc->AppendChild(TEXT("fields"));
 
 	return StructDoc;

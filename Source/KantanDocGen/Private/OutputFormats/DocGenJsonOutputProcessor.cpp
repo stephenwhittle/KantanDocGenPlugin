@@ -142,6 +142,10 @@ TSharedPtr<FJsonObject> DocGenJsonOutputProcessor::ParseClassFile(const FString&
 	CopyJsonField("fields", ParsedClass, OutNode);
 	CopyJsonField("parent_class", ParsedClass, OutNode);
 	CopyJsonField("meta", ParsedClass, OutNode);
+	CopyJsonField("blueprint_generated", ParsedClass, OutNode);
+	CopyJsonField("widget_blueprint", ParsedClass, OutNode);
+	CopyJsonField("class_path", ParsedClass, OutNode);
+	CopyJsonField("context_string", ParsedClass, OutNode);
 	return OutNode;
 }
 
@@ -165,6 +169,10 @@ TSharedPtr<FJsonObject> DocGenJsonOutputProcessor::ParseStructFile(const FString
 	CopyJsonField("fields", ParsedStruct, OutNode);
 	CopyJsonField("parent_class", ParsedStruct, OutNode);
 	CopyJsonField("meta", ParsedStruct, OutNode);
+	CopyJsonField("blueprint_generated", ParsedStruct, OutNode);
+	CopyJsonField("widget_blueprint", ParsedStruct, OutNode);
+	CopyJsonField("class_path", ParsedStruct, OutNode);
+	CopyJsonField("context_string", ParsedStruct, OutNode);
 	return OutNode;
 }
 

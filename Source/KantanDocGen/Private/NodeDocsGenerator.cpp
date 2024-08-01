@@ -622,8 +622,9 @@ TSharedPtr<DocTreeNode> FNodeDocsGenerator::InitClassDocTree(UClass* Class)
 		{
 			if (SuperMetadata->Num())
 			{
-				SuperMetadata->Append(Metadata);
-				Metadata = *SuperMetadata;
+				TMap<FName, FString> TmpCollatedMetadata = *SuperMetadata;
+				TmpCollatedMetadata.Append(Metadata);
+				Metadata = TmpCollatedMetadata;
 			}
 		}
 		SuperClass = SuperClass->GetSuperClass();

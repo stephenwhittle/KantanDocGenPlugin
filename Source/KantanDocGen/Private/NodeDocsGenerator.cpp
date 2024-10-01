@@ -434,9 +434,9 @@ bool FNodeDocsGenerator::GenerateNodeImage(UEdGraphNode* Node, FNodeProcessingSt
 		NodeWidget->SetOwner(GraphPanel.ToSharedRef());
 
 		const bool bUseGammaCorrection = false;
-		FWidgetRenderer Renderer(false);
-		Renderer.SetIsPrepassNeeded(true);
-		Renderer.ViewOffset = FVector2D(8, 8);
+		FWidgetRenderer LocalRenderer(false);
+		LocalRenderer.SetIsPrepassNeeded(true);
+		LocalRenderer.ViewOffset = FVector2D(8, 8);
 
 		const bool bIsLinearSpace = !bUseGammaCorrection;
 		const EPixelFormat PixelFormat = FSlateApplication::Get().GetRenderer()->GetSlateRecommendedColorFormat();
@@ -448,7 +448,7 @@ bool FNodeDocsGenerator::GenerateNodeImage(UEdGraphNode* Node, FNodeProcessingSt
 		RenderTarget->InitCustomFormat(DrawSize.X, DrawSize.Y, PixelFormat, bIsLinearSpace);
 		RenderTarget->UpdateResourceImmediate(true);
 
-		Renderer.DrawWidget(RenderTarget, NodeWidget.ToSharedRef(), DrawSize, 0, false);
+		LocalRenderer.DrawWidget(RenderTarget, NodeWidget.ToSharedRef(), DrawSize, 0, false);
 		auto Desired = NodeWidget->GetDesiredSize() + FVector2D(16, 16);
 #if UE_VERSION_NEWER_THAN(5, 0, 0)
 		FlushRenderingCommands();

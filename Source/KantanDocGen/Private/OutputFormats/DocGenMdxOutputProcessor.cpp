@@ -265,10 +265,40 @@ EIntermediateProcessingResult DocGenMdxOutputProcessor::ConvertJsonToMdx(FString
 			UE_LOG(LogKantanDocGen, Error, TEXT("KantanDocGen tool failed (code %i), see above output."), ReturnCode);
 			return EIntermediateProcessingResult::UnknownError;
 		}
-		else
+		
+		// After successfully generating the .mdx docs and image files, copy them to doc_root
+		IFileManager& FileManager = IFileManager::Get();
+		FDirectoryPath DocRootPath {BinaryPath.Path / "doc_root"}; // CALVIN TODO - add override to pass this in, with this as default
+		FFilePath MdxDestinationPath {DocRootPath.Path / "en-us/generated-refdocs.mdx"}; 
+		FDirectoryPath ImgDestinationPath {DocRootPath.Path / "en-us/img/generated-refdocs"}; 
+		
+		// copy the generated mdx file
+		if (FileManager.Copy(*MdxDestinationPath.FilePath, *OutMdxPath.FilePath) != 0)
 		{
-			return EIntermediateProcessingResult::Success;
+			return EIntermediateProcessingResult::UnknownError;
 		}
+
+		// clean out any previously generated images to 
+		FileManager.DeleteDirectory(*ImgDestinationPath.Path);
+
+		// find generated img directories and copy all existing png files
+		TArray<FString> ImgDirectories;
+		FileManager.FindFilesRecursive(ImgDirectories, *IntermediateDir, TEXT("img"), false, true);
+		for (FString ImgDirectory : ImgDirectories)
+		{
+			TArray<FString> ImageFiles;
+			FileManager.FindFiles(ImageFiles, *ImgDirectory, TEXT("png"));
+			for (FString Image : ImageFiles)
+			{
+				FString SourceImagePath {ImgDirectory / Image};
+				FString DestinationImagePath {ImgDestinationPath.Path / Image};
+				if (FileManager.Copy(*DestinationImagePath, *SourceImagePath) != 0)
+				{
+					return EIntermediateProcessingResult::UnknownError; 
+				}
+			}
+		}
+		return EIntermediateProcessingResult::Success;
 	}
 	else
 	{
@@ -417,7 +447,17 @@ EIntermediateProcessingResult DocGenMdxOutputProcessor::ProcessIntermediateDocs(
 		return EIntermediateProcessingResult::DiskWriteFailure;
 	}
 
+	// create mdx and image files
 	return ConvertJsonToMdx(IntermediateDir);
+	// copy generated files to module doc_root.  need to pass doc_root path in.
+	// copy template docusaurus to intermediate
+	// copy / merge in doc_root
+	// run npm install
+	// run npm build
+	// ???
+	// profit
+
+
 
 	// revisit the last conversion step once the mdx conversion is working
 	// need to use docusaurus to for offline docs conversion

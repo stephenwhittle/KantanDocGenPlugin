@@ -268,20 +268,16 @@ EIntermediateProcessingResult DocGenMdxOutputProcessor::ConvertJsonToMdx(FString
 		
 		// After successfully generating the .mdx docs and image files, copy them to doc_root
 		IFileManager& FileManager = IFileManager::Get();
-		FDirectoryPath DocRootPath {BinaryPath.Path / "doc_root"}; // CALVIN TODO - add override to pass this in, with this as default
 		FFilePath MdxDestinationPath {DocRootPath.Path / "en-us/generated-refdocs.mdx"}; 
 		FDirectoryPath ImgDestinationPath {DocRootPath.Path / "en-us/img/generated-refdocs"}; 
-		
-		// copy the generated mdx file
+
 		if (FileManager.Copy(*MdxDestinationPath.FilePath, *OutMdxPath.FilePath) != 0)
 		{
+			UE_LOG(LogKantanDocGen, Error, TEXT("Failed to copy %s to %s"), *OutMdxPath.FilePath, *MdxDestinationPath.FilePath);
 			return EIntermediateProcessingResult::UnknownError;
 		}
-
-		// clean out any previously generated images to 
+		
 		FileManager.DeleteDirectory(*ImgDestinationPath.Path);
-
-		// find generated img directories and copy all existing png files
 		TArray<FString> ImgDirectories;
 		FileManager.FindFilesRecursive(ImgDirectories, *IntermediateDir, TEXT("img"), false, true);
 		for (FString ImgDirectory : ImgDirectories)
@@ -294,6 +290,7 @@ EIntermediateProcessingResult DocGenMdxOutputProcessor::ConvertJsonToMdx(FString
 				FString DestinationImagePath {ImgDestinationPath.Path / Image};
 				if (FileManager.Copy(*DestinationImagePath, *SourceImagePath) != 0)
 				{
+					UE_LOG(LogKantanDocGen, Error, TEXT("Failed to copy %s to %s"), *SourceImagePath, *DestinationImagePath);
 					return EIntermediateProcessingResult::UnknownError; 
 				}
 			}
@@ -308,19 +305,32 @@ EIntermediateProcessingResult DocGenMdxOutputProcessor::ConvertJsonToMdx(FString
 
 EIntermediateProcessingResult DocGenMdxOutputProcessor::ConvertMdxToHtml(FString IntermediateDir, FString OutputDir)
 {
-	// todo -- use docusaurus to convert to html for offline docs
-	// Unsure if this should happen here, but leaving here for the moment in case
-	return EIntermediateProcessingResult::UnknownError;
+	// create a docusaurus staging directory
+	FString DocusaurusStagingPath {IntermediateDir / "docusaurus"};
+	if (!FPlatformFileManager::Get().GetPlatformFile().CopyDirectoryTree(*DocusaurusStagingPath, *DocusaurusPath.Path, true))
+	{
+		UE_LOG(LogKantanDocGen, Error, TEXT("Failed to copy template docusaurus %s to intermediate directory %s"), *DocusaurusPath.Path, *DocusaurusStagingPath);
+		return EIntermediateProcessingResult::UnknownError;
+	}
+	// merge doc_root mdx and img into staging directory
+	if (!FPlatformFileManager::Get().GetPlatformFile().CopyDirectoryTree(*(DocusaurusStagingPath / "public/en-us"), *(DocRootPath.Path / "en-us"), false))
+	{
+		UE_LOG(LogKantanDocGen, Error, TEXT("Failed to merge doc_root %s into docusaurus staging directory %s"), *(DocRootPath.Path / "en-us"), *(DocusaurusStagingPath / "public/en-us"));
+		return EIntermediateProcessingResult::UnknownError;
+	}
+	// copy sidebars.js, replacing the existing file
+	if (!FPlatformFileManager::Get().GetPlatformFile().CopyFile(*(DocusaurusStagingPath / "public/menu/sidebars.js"), *(DocRootPath.Path / "menu/sidebars.js")))
+	{
+		UE_LOG(LogKantanDocGen, Error, TEXT("Failed to merge doc_root %s into staging directory %s"), *(DocRootPath.Path / "menu/sidebars.js"), *(DocusaurusStagingPath / "public/menu/sidebars.js"));
+		return EIntermediateProcessingResult::UnknownError;
+	}
 
-	// IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
-	// PlatformFile.CreateDirectory(*(OutputDir / "img"));
-	// PlatformFile.CopyDirectoryTree(*(OutputDir / "img"), *(BinaryPath.Path / "img"), true);
+	// run npm install
+	// run npm build
+	// ???
+	// profit
 
-	// const FFilePath InAdocPath {IntermediateDir / "docs.adoc"};
-	// const FFilePath OutHTMLPath {OutputDir / "documentation.html"};
-	// void* PipeRead = nullptr;
-	// void* PipeWrite = nullptr;
-	// verify(FPlatformProcess::CreatePipe(PipeRead, PipeWrite));
+	return EIntermediateProcessingResult::Success;
 
 	// const FString Args = Quote(BinaryPath.Path / "scripts" / "render_html.rb") + " " + Quote(InAdocPath.FilePath) +
 	//					 " " + Quote(OutHTMLPath.FilePath);
@@ -387,7 +397,6 @@ DocGenMdxOutputProcessor::DocGenMdxOutputProcessor(TOptional<FFilePath> Template
 	{
 		BinaryPath.Path = FString("bin");
 	}
-
 	if (TemplatePathOverride.IsSet())
 	{
 		TemplatePath = TemplatePathOverride.GetValue();
@@ -396,6 +405,21 @@ DocGenMdxOutputProcessor::DocGenMdxOutputProcessor(TOptional<FFilePath> Template
 	{
 		TemplatePath.FilePath = BinaryPath.Path / "template" / "docs.mdx.in";
 	}
+
+	/*
+	FFilePath TemplatePath;
+	FDirectoryPath BinaryPath;
+	FDirectoryPath DocRootPath;
+	FDirectoryPath DocusaurusPath;
+	FFilePath NpmExecutablePath;
+	*/
+
+
+	// CALVIN TODO - add override to pass these in, with this as fallback default
+	DocRootPath.Path = BinaryPath.Path / "doc_root"; 
+	//DocusaurusPath.Path = FPaths::ProjectDir() / "Doc/docusaurus";
+	DocusaurusPath.Path = "C:/source/modio-ue4-internal/Doc/docusaurus";
+	// NpmExecutablePath;
 
 	// if (RubyExecutablePathOverride.IsSet())
 	//{
@@ -446,27 +470,12 @@ EIntermediateProcessingResult DocGenMdxOutputProcessor::ProcessIntermediateDocs(
 	{
 		return EIntermediateProcessingResult::DiskWriteFailure;
 	}
-
-	// create mdx and image files
-	return ConvertJsonToMdx(IntermediateDir);
-	// copy generated files to module doc_root.  need to pass doc_root path in.
-	// copy template docusaurus to intermediate
-	// copy / merge in doc_root
-	// run npm install
-	// run npm build
-	// ???
-	// profit
-
-
-
-	// revisit the last conversion step once the mdx conversion is working
-	// need to use docusaurus to for offline docs conversion
-
-	//if (ConvertJsonToAdoc(IntermediateDir) == EIntermediateProcessingResult::Success)
-	//{
-	//	return ConvertMdxToHTML(IntermediateDir, OutputDir);
-	//}
-	// return EIntermediateProcessingResult::UnknownError;
+	// create mdx and image files, and copy them to doc_root
+	if (ConvertJsonToMdx(IntermediateDir) == EIntermediateProcessingResult::Success)
+	{
+		return ConvertMdxToHtml(IntermediateDir, OutputDir);
+	}
+	return EIntermediateProcessingResult::UnknownError;
 }
 
 EIntermediateProcessingResult DocGenMdxOutputProcessor::ConsolidateClasses(TSharedPtr<FJsonObject> ParsedIndex,

@@ -27,7 +27,9 @@ class DocGenMdxOutputProcessor : public IDocGenOutputProcessor
 	EIntermediateProcessingResult ConvertMdxToHtml(FString IntermediateDir, FString OutputDir);
 	FFilePath TemplatePath;
 	FDirectoryPath BinaryPath;
-	//FFilePath RubyExecutablePath;
+	FDirectoryPath DocRootPath;
+	FDirectoryPath DocusaurusPath;
+	FFilePath NpmExecutablePath;
 
 public:
 	DocGenMdxOutputProcessor(TOptional<FFilePath> TemplatePathOverride, TOptional<FDirectoryPath> BinaryPathOverride);

@@ -32,7 +32,9 @@ class DocGenMdxOutputProcessor : public IDocGenOutputProcessor
 	FFilePath NpmExecutablePath;
 
 public:
-	DocGenMdxOutputProcessor(TOptional<FFilePath> TemplatePathOverride, TOptional<FDirectoryPath> BinaryPathOverride);
+	DocGenMdxOutputProcessor(TOptional<FFilePath> TemplatePathOverride, TOptional<FDirectoryPath> BinaryPathOverride,
+							 TOptional<FFilePath> NpmPathOverride, TOptional<FDirectoryPath> DocRootPathOverride,
+							 TOptional<FDirectoryPath> DocusaurusPathOverride);
 	virtual EIntermediateProcessingResult ProcessIntermediateDocs(FString const& IntermediateDir,
 																  FString const& OutputDir, FString const& DocTitle,
 																  bool bCleanOutput) override;
@@ -44,11 +46,10 @@ public:
 	EIntermediateProcessingResult ConsolidateStructs(TSharedPtr<FJsonObject> ParsedIndex,
 													 FString const& IntermediateDir, FString const& OutputDir,
 													 TSharedPtr<FJsonObject> ConsolidatedOutput);
-	
-	EIntermediateProcessingResult ConsolidateEnums(TSharedPtr<FJsonObject> ParsedIndex,
-													 FString const& IntermediateDir, FString const& OutputDir,
-													 TSharedPtr<FJsonObject> ConsolidatedOutput);
-	
+
+	EIntermediateProcessingResult ConsolidateEnums(TSharedPtr<FJsonObject> ParsedIndex, FString const& IntermediateDir,
+												   FString const& OutputDir,
+												   TSharedPtr<FJsonObject> ConsolidatedOutput);
 
 	TOptional<TArray<FString>> GetNamesFromIndexFile(const FString& NameType, TSharedPtr<FJsonObject> ParsedIndex);
 

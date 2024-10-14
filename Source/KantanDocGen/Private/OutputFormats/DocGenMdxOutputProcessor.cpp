@@ -222,8 +222,8 @@ EIntermediateProcessingResult DocGenMdxOutputProcessor::ConvertJsonToMdx(FString
 	void* PipeWrite = nullptr;
 	verify(FPlatformProcess::CreatePipe(PipeRead, PipeWrite));
 
-	const FString Args =
-		Quote(TemplatePath.FilePath) + " " + Quote(InJsonPath.FilePath) + " " + Quote(OutMdxPath.FilePath) + " " + Quote(Format);
+	const FString Args = Quote(TemplatePath.FilePath) + " " + Quote(InJsonPath.FilePath) + " " +
+						 Quote(OutMdxPath.FilePath) + " " + Quote(Format);
 
 	FProcHandle Proc = FPlatformProcess::CreateProc(*(BinaryPath.Path / "convert.exe"), *Args, true, false, false,
 													nullptr, 0, nullptr, PipeWrite);
@@ -265,18 +265,19 @@ EIntermediateProcessingResult DocGenMdxOutputProcessor::ConvertJsonToMdx(FString
 			UE_LOG(LogKantanDocGen, Error, TEXT("KantanDocGen tool failed (code %i), see above output."), ReturnCode);
 			return EIntermediateProcessingResult::UnknownError;
 		}
-		
+
 		// After successfully generating the .mdx docs and image files, copy them to doc_root
 		IFileManager& FileManager = IFileManager::Get();
-		FFilePath MdxDestinationPath {DocRootPath.Path / "en-us/generated-refdocs.mdx"}; 
-		FDirectoryPath ImgDestinationPath {DocRootPath.Path / "en-us/img/generated-refdocs"}; 
+		FFilePath MdxDestinationPath {DocRootPath.Path / "en-us/generated-refdocs.mdx"};
+		FDirectoryPath ImgDestinationPath {DocRootPath.Path / "en-us/img/generated-refdocs"};
 
 		if (FileManager.Copy(*MdxDestinationPath.FilePath, *OutMdxPath.FilePath) != 0)
 		{
-			UE_LOG(LogKantanDocGen, Error, TEXT("Failed to copy %s to %s"), *OutMdxPath.FilePath, *MdxDestinationPath.FilePath);
+			UE_LOG(LogKantanDocGen, Error, TEXT("Failed to copy %s to %s"), *OutMdxPath.FilePath,
+				   *MdxDestinationPath.FilePath);
 			return EIntermediateProcessingResult::UnknownError;
 		}
-		
+
 		FileManager.DeleteDirectory(*ImgDestinationPath.Path);
 		TArray<FString> ImgDirectories;
 		FileManager.FindFilesRecursive(ImgDirectories, *IntermediateDir, TEXT("img"), false, true);
@@ -290,8 +291,9 @@ EIntermediateProcessingResult DocGenMdxOutputProcessor::ConvertJsonToMdx(FString
 				FString DestinationImagePath {ImgDestinationPath.Path / Image};
 				if (FileManager.Copy(*DestinationImagePath, *SourceImagePath) != 0)
 				{
-					UE_LOG(LogKantanDocGen, Error, TEXT("Failed to copy %s to %s"), *SourceImagePath, *DestinationImagePath);
-					return EIntermediateProcessingResult::UnknownError; 
+					UE_LOG(LogKantanDocGen, Error, TEXT("Failed to copy %s to %s"), *SourceImagePath,
+						   *DestinationImagePath);
+					return EIntermediateProcessingResult::UnknownError;
 				}
 			}
 		}
@@ -307,77 +309,83 @@ EIntermediateProcessingResult DocGenMdxOutputProcessor::ConvertMdxToHtml(FString
 {
 	// create a docusaurus staging directory
 	const FString DocusaurusStagingPath {IntermediateDir / "docusaurus"};
-	if (!FPlatformFileManager::Get().GetPlatformFile().CopyDirectoryTree(*DocusaurusStagingPath, *DocusaurusPath.Path, true))
+	if (!FPlatformFileManager::Get().GetPlatformFile().CopyDirectoryTree(*DocusaurusStagingPath, *DocusaurusPath.Path,
+																		 true))
 	{
-		UE_LOG(LogKantanDocGen, Error, TEXT("Failed to copy template docusaurus %s to intermediate directory %s"), *DocusaurusPath.Path, *DocusaurusStagingPath);
+		UE_LOG(LogKantanDocGen, Error, TEXT("Failed to copy template docusaurus %s to intermediate directory %s"),
+			   *DocusaurusPath.Path, *DocusaurusStagingPath);
 		return EIntermediateProcessingResult::UnknownError;
 	}
 	// merge doc_root mdx and img into staging directory
-	if (!FPlatformFileManager::Get().GetPlatformFile().CopyDirectoryTree(*(DocusaurusStagingPath / "public/en-us"), *(DocRootPath.Path / "en-us"), false))
+	if (!FPlatformFileManager::Get().GetPlatformFile().CopyDirectoryTree(*(DocusaurusStagingPath / "public/en-us"),
+																		 *(DocRootPath.Path / "en-us"), false))
 	{
-		UE_LOG(LogKantanDocGen, Error, TEXT("Failed to merge doc_root %s into docusaurus staging directory %s"), *(DocRootPath.Path / "en-us"), *(DocusaurusStagingPath / "public/en-us"));
+		UE_LOG(LogKantanDocGen, Error, TEXT("Failed to merge doc_root %s into docusaurus staging directory %s"),
+			   *(DocRootPath.Path / "en-us"), *(DocusaurusStagingPath / "public/en-us"));
 		return EIntermediateProcessingResult::UnknownError;
 	}
 	// copy sidebars.js, replacing the existing file
-	if (!FPlatformFileManager::Get().GetPlatformFile().CopyFile(*(DocusaurusStagingPath / "public/menu/sidebars.js"), *(DocRootPath.Path / "menu/sidebars.js")))
+	if (!FPlatformFileManager::Get().GetPlatformFile().CopyFile(*(DocusaurusStagingPath / "public/menu/sidebars.js"),
+																*(DocRootPath.Path / "menu/sidebars.js")))
 	{
-		UE_LOG(LogKantanDocGen, Error, TEXT("Failed to merge doc_root %s into staging directory %s"), *(DocRootPath.Path / "menu/sidebars.js"), *(DocusaurusStagingPath / "public/menu/sidebars.js"));
+		UE_LOG(LogKantanDocGen, Error, TEXT("Failed to merge doc_root %s into staging directory %s"),
+			   *(DocRootPath.Path / "menu/sidebars.js"), *(DocusaurusStagingPath / "public/menu/sidebars.js"));
 		return EIntermediateProcessingResult::UnknownError;
 	}
 
-	// const FString Args = Quote(BinaryPath.Path / "scripts" / "render_html.rb") + " " + Quote(InAdocPath.FilePath) +
-	//					 " " + Quote(OutHTMLPath.FilePath);
-	const FString Executable = NpmExecutablePath.FilePath;
-	//const FString InstArgs = "install";
-	//const FString BuildArgs = "run build";
-	//const FString WorkingDir = DocusaurusStagingPath;
-
-	FProcHandle InstallProcessHandle = FPlatformProcess::CreateProc(*Executable, TEXT("install"), true, false, false, nullptr,	0, *DocusaurusStagingPath, nullptr, nullptr,nullptr);
+	// invoke npm install to install required packages
+	FProcHandle InstallProcessHandle =
+		FPlatformProcess::CreateProc(*(NpmExecutablePath.FilePath), TEXT("install"), true, false, false, nullptr, 0,
+									 *DocusaurusStagingPath, nullptr, nullptr, nullptr);
 	if (!InstallProcessHandle.IsValid())
-    {
+	{
 		UE_LOG(LogKantanDocGen, Error, TEXT("Create process for npm install step failed"));
 		return EIntermediateProcessingResult::UnknownError;
 	}
-    FPlatformProcess::WaitForProc(InstallProcessHandle);
-    int32 InstallExitCode;
-    FPlatformProcess::GetProcReturnCode(InstallProcessHandle, &InstallExitCode);
-    FPlatformProcess::CloseProc(InstallProcessHandle);
-    if (InstallExitCode != 0)
-    {
-        UE_LOG(LogKantanDocGen, Error, TEXT("npm install error"));
+	FPlatformProcess::WaitForProc(InstallProcessHandle);
+	int32 InstallExitCode;
+	FPlatformProcess::GetProcReturnCode(InstallProcessHandle, &InstallExitCode);
+	FPlatformProcess::CloseProc(InstallProcessHandle);
+	if (InstallExitCode != 0)
+	{
+		UE_LOG(LogKantanDocGen, Error, TEXT("npm install error"));
 		return EIntermediateProcessingResult::UnknownError;
-    }
-
-	FProcHandle BuildProcessHandle = FPlatformProcess::CreateProc(*Executable, TEXT("run build"), true, false, false, nullptr,	0, *DocusaurusStagingPath, nullptr, nullptr,nullptr);
+	}
+	// invoke npm run build to build the html docs
+	FProcHandle BuildProcessHandle =
+		FPlatformProcess::CreateProc(*(NpmExecutablePath.FilePath), TEXT("run build"), true, false, false, nullptr, 0,
+									 *DocusaurusStagingPath, nullptr, nullptr, nullptr);
 	if (!BuildProcessHandle.IsValid())
-    {
+	{
 		UE_LOG(LogKantanDocGen, Error, TEXT("Create process for npm build step failed"));
 		return EIntermediateProcessingResult::UnknownError;
 	}
-    FPlatformProcess::WaitForProc(BuildProcessHandle);
-    int32 BuildExitCode;
-    FPlatformProcess::GetProcReturnCode(BuildProcessHandle, &BuildExitCode);
-    FPlatformProcess::CloseProc(BuildProcessHandle);
-    if (BuildExitCode != 0)
-    {
-        UE_LOG(LogKantanDocGen, Error, TEXT("npm run build error"));
-		return EIntermediateProcessingResult::UnknownError;
-    }
-
-	// copy output from intermediate
-	FString HtmlDocsPath {DocusaurusStagingPath / "build/index.html"};
-	FString HtmlOutputDir {"C:/dev/DocsTest"};
-	FString HtmlOutputPath {HtmlOutputDir / "refdocs.html"};
-	if (!FPlatformFileManager::Get().GetPlatformFile().CopyFile(*HtmlOutputPath, *HtmlDocsPath))
+	FPlatformProcess::WaitForProc(BuildProcessHandle);
+	int32 BuildExitCode;
+	FPlatformProcess::GetProcReturnCode(BuildProcessHandle, &BuildExitCode);
+	FPlatformProcess::CloseProc(BuildProcessHandle);
+	if (BuildExitCode != 0)
 	{
-		UE_LOG(LogKantanDocGen, Error, TEXT("Failed to copy build docs %s to output directory %s"), *HtmlDocsPath, *HtmlOutputPath);
+		UE_LOG(LogKantanDocGen, Error, TEXT("npm run build error"));
+		return EIntermediateProcessingResult::UnknownError;
+	}
+	// copy result from intermediate directory to output directory
+	FString HtmlDocsPath {DocusaurusStagingPath / "build"};
+	//FString HtmlOutputDir {"C:/dev/DocsTest"};
+	if (!FPlatformFileManager::Get().GetPlatformFile().CopyDirectoryTree(*OutputDir, *HtmlDocsPath, true))
+	{
+		UE_LOG(LogKantanDocGen, Error, TEXT("Failed to copy build docs %s to output directory %s"), *HtmlDocsPath,
+			   *OutputDir);
 		return EIntermediateProcessingResult::UnknownError;
 	}
 	return EIntermediateProcessingResult::Success;
 }
 
 DocGenMdxOutputProcessor::DocGenMdxOutputProcessor(TOptional<FFilePath> TemplatePathOverride,
-												   TOptional<FDirectoryPath> BinaryPathOverride)
+												   TOptional<FDirectoryPath> BinaryPathOverride,
+												   TOptional<FFilePath> NpmPathOverride,
+												   TOptional<FDirectoryPath> DocRootPathOverride,
+												   TOptional<FDirectoryPath> DocusaurusPathOverride)
 {
 	if (BinaryPathOverride.IsSet())
 	{
@@ -395,13 +403,30 @@ DocGenMdxOutputProcessor::DocGenMdxOutputProcessor(TOptional<FFilePath> Template
 	{
 		TemplatePath.FilePath = BinaryPath.Path / "template" / "docs.mdx.in";
 	}
-
-	// CALVIN TODO - add override to pass these in, with this as fallback default
-	DocRootPath.Path = BinaryPath.Path / "doc_root"; 
-	//DocusaurusPath.Path = FPaths::ProjectDir() / "Doc/docusaurus";
-	DocusaurusPath.Path = "C:/source/modio-ue4-internal/Doc/docusaurus";
-	// this might need to be node.exe or something, and maybe extra args
-	NpmExecutablePath.FilePath = "C:/Program Files/nodejs/npm.cmd";
+	if (NpmPathOverride.IsSet())
+	{
+		NpmExecutablePath = NpmPathOverride.GetValue();
+	}
+	else
+	{
+		NpmExecutablePath.FilePath = "C:/Program Files/nodejs/npm.cmd";
+	}
+	if (DocRootPathOverride.IsSet())
+	{
+		DocRootPath = DocRootPathOverride.GetValue();
+	}
+	else
+	{
+		DocRootPath.Path = BinaryPath.Path / "doc_root";
+	}
+	if (DocusaurusPathOverride.IsSet())
+	{
+		DocusaurusPath = DocusaurusPathOverride.GetValue();
+	}
+	else
+	{
+		DocusaurusPath.Path = FPaths::ProjectDir() / "Doc/docusaurus";
+	}
 }
 
 EIntermediateProcessingResult DocGenMdxOutputProcessor::ProcessIntermediateDocs(FString const& IntermediateDir,
@@ -446,6 +471,7 @@ EIntermediateProcessingResult DocGenMdxOutputProcessor::ProcessIntermediateDocs(
 	// create mdx and image files, and copy them to doc_root
 	if (ConvertJsonToMdx(IntermediateDir) == EIntermediateProcessingResult::Success)
 	{
+		// invoke npm to convert mdx to html, and copy results to specified output directory
 		return ConvertMdxToHtml(IntermediateDir, OutputDir);
 	}
 	return EIntermediateProcessingResult::UnknownError;

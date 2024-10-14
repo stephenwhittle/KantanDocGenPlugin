@@ -44,19 +44,26 @@ public:
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	bool bOverrideTemplatePath = false;
-
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (EditCondition = "bOverrideTemplatePath"))
 	FFilePath TemplatePath;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	bool bOverrideBinaryPath = false;
-
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (EditCondition = "bOverrideBinaryPath"))
 	FDirectoryPath BinaryPath;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	bool bOverrideRubyPath = false;
+	bool bOverrideNpmPath = false;
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (EditCondition = "bOverrideNpmPath"))
+	FFilePath NpmPath;
 
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (EditCondition = "bOverrideRubyPath"))
-	FFilePath RubyPath;
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	bool bOverrideDocRootPath = false;
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (EditCondition = "bOverrideDocRootPath"))
+	FDirectoryPath DocRootPath;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	bool bOverrideDocusaurusPath = false;
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (EditCondition = "bOverrideDocusaurusPath"))
+	FDirectoryPath DocusaurusPath;
 };

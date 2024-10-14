@@ -110,13 +110,27 @@ TSharedPtr<struct IDocGenOutputProcessor> UDocGenMdxOutputFactory::CreateInterme
 	{
 		TemplateOverride = TemplatePath;
 	}
-
 	TOptional<FDirectoryPath> BinaryOverride;
 	if (bOverrideBinaryPath)
 	{
 		BinaryOverride = BinaryPath;
 	}
-	return MakeShared<DocGenMdxOutputProcessor>(TemplateOverride, BinaryOverride);
+	TOptional<FFilePath> NpmOverride;
+	if (bOverrideNpmPath)
+	{
+		NpmOverride = NpmPath;
+	}
+	TOptional<FDirectoryPath> DocRootOverride;
+	if (bOverrideDocRootPath)
+	{
+		DocRootOverride = DocRootPath;
+	}
+	TOptional<FDirectoryPath> DocusaurusOverride;
+	if (bOverrideDocusaurusPath)
+	{
+		DocusaurusOverride = DocusaurusPath;
+	}
+	return MakeShared<DocGenMdxOutputProcessor>(TemplateOverride, BinaryOverride, NpmOverride, DocRootOverride, DocusaurusOverride);
 }
 
 FString UDocGenMdxOutputFactory::GetFormatIdentifier()
@@ -142,12 +156,28 @@ void UDocGenMdxOutputFactory::LoadSettings(const FDocGenOutputFormatFactorySetti
 			bOverrideBinaryPath = (Settings.SettingValues["overridebindir"] == "true");
 		}
 	}
-	if (Settings.SettingValues.Contains("ruby"))
+	if (Settings.SettingValues.Contains("npm"))
 	{
-		RubyPath.FilePath = Settings.SettingValues["ruby"];
-		if (Settings.SettingValues.Contains("overrideruby"))
+		NpmPath.FilePath = Settings.SettingValues["npm"];
+		if (Settings.SettingValues.Contains("overridenpm"))
 		{
-			bOverrideRubyPath = (Settings.SettingValues["overrideruby"] == "true");
+			bOverrideNpmPath = (Settings.SettingValues["overridenpm"] == "true");
+		}
+	}
+	if (Settings.SettingValues.Contains("docroot"))
+	{
+		DocRootPath.Path = Settings.SettingValues["docroot"];
+		if (Settings.SettingValues.Contains("overridedocroot"))
+		{
+			bOverrideDocRootPath = (Settings.SettingValues["overridedocroot"] == "true");
+		}
+	}
+	if (Settings.SettingValues.Contains("docusaurus"))
+	{
+		DocusaurusPath.Path = Settings.SettingValues["docusaurus"];
+		if (Settings.SettingValues.Contains("overridedocusaurus"))
+		{
+			bOverrideDocusaurusPath = (Settings.SettingValues["overridedocusaurus"] == "true");
 		}
 	}
 }
@@ -167,12 +197,24 @@ FDocGenOutputFormatFactorySettings UDocGenMdxOutputFactory::SaveSettings()
 	}
 	Settings.SettingValues.Add("bindir", BinaryPath.Path);
 
-	if (bOverrideRubyPath)
+	if (bOverrideNpmPath)
 	{
-		Settings.SettingValues.Add("overrideruby", "true");
+		Settings.SettingValues.Add("overridenpm", "true");
 	}
-	Settings.SettingValues.Add("ruby", RubyPath.FilePath);
-
+	Settings.SettingValues.Add("npm", NpmPath.FilePath);
+	
+	if (bOverrideDocRootPath)
+	{
+		Settings.SettingValues.Add("overridedocroot", "true");
+	}
+	Settings.SettingValues.Add("docroot", DocRootPath.Path);
+	
+	if (bOverrideDocusaurusPath)
+	{
+		Settings.SettingValues.Add("overridedocusaurus", "true");
+	}
+	Settings.SettingValues.Add("docusaurus", DocusaurusPath.Path);
+	
 	Settings.FactoryClass = StaticClass();
 	return Settings;
 }

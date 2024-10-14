@@ -306,7 +306,7 @@ EIntermediateProcessingResult DocGenMdxOutputProcessor::ConvertJsonToMdx(FString
 EIntermediateProcessingResult DocGenMdxOutputProcessor::ConvertMdxToHtml(FString IntermediateDir, FString OutputDir)
 {
 	// create a docusaurus staging directory
-	FString DocusaurusStagingPath {IntermediateDir / "docusaurus"};
+	const FString DocusaurusStagingPath {IntermediateDir / "docusaurus"};
 	if (!FPlatformFileManager::Get().GetPlatformFile().CopyDirectoryTree(*DocusaurusStagingPath, *DocusaurusPath.Path, true))
 	{
 		UE_LOG(LogKantanDocGen, Error, TEXT("Failed to copy template docusaurus %s to intermediate directory %s"), *DocusaurusPath.Path, *DocusaurusStagingPath);
@@ -325,65 +325,55 @@ EIntermediateProcessingResult DocGenMdxOutputProcessor::ConvertMdxToHtml(FString
 		return EIntermediateProcessingResult::UnknownError;
 	}
 
-	// run npm install
-	// run npm build
-	// ???
-	// profit
-
-	return EIntermediateProcessingResult::Success;
-
 	// const FString Args = Quote(BinaryPath.Path / "scripts" / "render_html.rb") + " " + Quote(InAdocPath.FilePath) +
 	//					 " " + Quote(OutHTMLPath.FilePath);
+	const FString Executable = NpmExecutablePath.FilePath;
+	//const FString InstArgs = "install";
+	//const FString BuildArgs = "run build";
+	//const FString WorkingDir = DocusaurusStagingPath;
 
-	// FProcHandle Proc = FPlatformProcess::CreateProc(*(RubyExecutablePath.FilePath), *Args, true, false, false,
-	// nullptr, 												0, *(BinaryPath.Path / "scripts"), PipeWrite);
+	FProcHandle InstallProcessHandle = FPlatformProcess::CreateProc(*Executable, TEXT("install"), true, false, false, nullptr,	0, *DocusaurusStagingPath, nullptr, nullptr,nullptr);
+	if (!InstallProcessHandle.IsValid())
+    {
+		UE_LOG(LogKantanDocGen, Error, TEXT("Create process for npm install step failed"));
+		return EIntermediateProcessingResult::UnknownError;
+	}
+    FPlatformProcess::WaitForProc(InstallProcessHandle);
+    int32 InstallExitCode;
+    FPlatformProcess::GetProcReturnCode(InstallProcessHandle, &InstallExitCode);
+    FPlatformProcess::CloseProc(InstallProcessHandle);
+    if (InstallExitCode != 0)
+    {
+        UE_LOG(LogKantanDocGen, Error, TEXT("npm install error"));
+		return EIntermediateProcessingResult::UnknownError;
+    }
 
-	// int32 ReturnCode = 0;
-	// if (Proc.IsValid())
-	//{
-	//	FString BufferedText;
-	//	for (bool bProcessFinished = false; !bProcessFinished;)
-	//	{
-	//		bProcessFinished = FPlatformProcess::GetProcReturnCode(Proc, &ReturnCode);
+	FProcHandle BuildProcessHandle = FPlatformProcess::CreateProc(*Executable, TEXT("run build"), true, false, false, nullptr,	0, *DocusaurusStagingPath, nullptr, nullptr,nullptr);
+	if (!BuildProcessHandle.IsValid())
+    {
+		UE_LOG(LogKantanDocGen, Error, TEXT("Create process for npm build step failed"));
+		return EIntermediateProcessingResult::UnknownError;
+	}
+    FPlatformProcess::WaitForProc(BuildProcessHandle);
+    int32 BuildExitCode;
+    FPlatformProcess::GetProcReturnCode(BuildProcessHandle, &BuildExitCode);
+    FPlatformProcess::CloseProc(BuildProcessHandle);
+    if (BuildExitCode != 0)
+    {
+        UE_LOG(LogKantanDocGen, Error, TEXT("npm run build error"));
+		return EIntermediateProcessingResult::UnknownError;
+    }
 
-	//		/*			if(!bProcessFinished && Warn->ReceivedUserCancel())
-	//		{
-	//		FPlatformProcess::TerminateProc(ProcessHandle);
-	//		bProcessFinished = true;
-	//		}
-	//		*/
-	//		BufferedText += FPlatformProcess::ReadPipe(PipeRead);
-
-	//		int32 EndOfLineIdx;
-	//		while (BufferedText.FindChar('\n', EndOfLineIdx))
-	//		{
-	//			FString Line = BufferedText.Left(EndOfLineIdx);
-	//			Line.RemoveFromEnd(TEXT("\r"));
-
-	//			UE_LOG(LogKantanDocGen, Log, TEXT("[KantanDocGen] %s"), *Line);
-
-	//			BufferedText = BufferedText.Mid(EndOfLineIdx + 1);
-	//		}
-
-	//		FPlatformProcess::Sleep(0.1f);
-	//	}
-	//	FPlatformProcess::CloseProc(Proc);
-	//	Proc.Reset();
-
-	//	if (ReturnCode != 0)
-	//	{
-	//		UE_LOG(LogKantanDocGen, Error, TEXT("KantanDocGen tool failed (code %i), see above output."), ReturnCode);
-	//		return EIntermediateProcessingResult::UnknownError;
-	//	}
-	//	else
-	//	{
-	//		return EIntermediateProcessingResult::Success;
-	//	}
-	//}
-	// else
-	//{
-	//	return EIntermediateProcessingResult::UnknownError;
-	//}
+	// copy output from intermediate
+	FString HtmlDocsPath {DocusaurusStagingPath / "build/index.html"};
+	FString HtmlOutputDir {"C:/dev/DocsTest"};
+	FString HtmlOutputPath {HtmlOutputDir / "refdocs.html"};
+	if (!FPlatformFileManager::Get().GetPlatformFile().CopyFile(*HtmlOutputPath, *HtmlDocsPath))
+	{
+		UE_LOG(LogKantanDocGen, Error, TEXT("Failed to copy build docs %s to output directory %s"), *HtmlDocsPath, *HtmlOutputPath);
+		return EIntermediateProcessingResult::UnknownError;
+	}
+	return EIntermediateProcessingResult::Success;
 }
 
 DocGenMdxOutputProcessor::DocGenMdxOutputProcessor(TOptional<FFilePath> TemplatePathOverride,
@@ -406,29 +396,12 @@ DocGenMdxOutputProcessor::DocGenMdxOutputProcessor(TOptional<FFilePath> Template
 		TemplatePath.FilePath = BinaryPath.Path / "template" / "docs.mdx.in";
 	}
 
-	/*
-	FFilePath TemplatePath;
-	FDirectoryPath BinaryPath;
-	FDirectoryPath DocRootPath;
-	FDirectoryPath DocusaurusPath;
-	FFilePath NpmExecutablePath;
-	*/
-
-
 	// CALVIN TODO - add override to pass these in, with this as fallback default
 	DocRootPath.Path = BinaryPath.Path / "doc_root"; 
 	//DocusaurusPath.Path = FPaths::ProjectDir() / "Doc/docusaurus";
 	DocusaurusPath.Path = "C:/source/modio-ue4-internal/Doc/docusaurus";
-	// NpmExecutablePath;
-
-	// if (RubyExecutablePathOverride.IsSet())
-	//{
-	//	RubyExecutablePath = RubyExecutablePathOverride.GetValue();
-	// }
-	// else
-	//{
-	//	RubyExecutablePath.FilePath = "ruby.exe";
-	// }
+	// this might need to be node.exe or something, and maybe extra args
+	NpmExecutablePath.FilePath = "C:/Program Files/nodejs/npm.cmd";
 }
 
 EIntermediateProcessingResult DocGenMdxOutputProcessor::ProcessIntermediateDocs(FString const& IntermediateDir,

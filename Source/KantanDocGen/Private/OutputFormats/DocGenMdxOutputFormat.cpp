@@ -130,7 +130,8 @@ TSharedPtr<struct IDocGenOutputProcessor> UDocGenMdxOutputFactory::CreateInterme
 	{
 		DocusaurusOverride = DocusaurusPath;
 	}
-	return MakeShared<DocGenMdxOutputProcessor>(TemplateOverride, BinaryOverride, NpmOverride, DocRootOverride, DocusaurusOverride);
+	return MakeShared<DocGenMdxOutputProcessor>(TemplateOverride, BinaryOverride, NpmOverride, DocRootOverride,
+												DocusaurusOverride);
 }
 
 FString UDocGenMdxOutputFactory::GetFormatIdentifier()
@@ -202,19 +203,19 @@ FDocGenOutputFormatFactorySettings UDocGenMdxOutputFactory::SaveSettings()
 		Settings.SettingValues.Add("overridenpm", "true");
 	}
 	Settings.SettingValues.Add("npm", NpmPath.FilePath);
-	
+
 	if (bOverrideDocRootPath)
 	{
 		Settings.SettingValues.Add("overridedocroot", "true");
 	}
 	Settings.SettingValues.Add("docroot", DocRootPath.Path);
-	
+
 	if (bOverrideDocusaurusPath)
 	{
 		Settings.SettingValues.Add("overridedocusaurus", "true");
 	}
 	Settings.SettingValues.Add("docusaurus", DocusaurusPath.Path);
-	
+
 	Settings.FactoryClass = StaticClass();
 	return Settings;
 }

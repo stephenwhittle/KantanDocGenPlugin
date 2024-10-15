@@ -1,15 +1,7 @@
 #include "OutputFormats/DocGenMdxOutputProcessor.h"
 #include "Algo/Transform.h"
 #include "HAL/FileManager.h"
-
-// To define the UE_5_0_OR_LATER below
-#include "Misc/EngineVersionComparison.h"
-#if UE_VERSION_NEWER_THAN(5, 0, 0)
-	#include "HAL/PlatformFileManager.h"
-#else
-	#include "HAL/PlatformFilemanager.h"
-#endif
-
+#include "HAL/PlatformFileManager.h"
 #include "Json.h"
 #include "JsonDomBuilder.h"
 #include "KantanDocGenLog.h"
@@ -216,8 +208,8 @@ EIntermediateProcessingResult DocGenMdxOutputProcessor::ConvertJsonToMdx(FString
 {
 	const FFilePath InJsonPath {IntermediateDir / "consolidated.json"};
 	const FFilePath OutMdxPath {IntermediateDir / "docs.mdx"};
-	const FString Format {"markdown"};
 
+	const FString Format {"markdown"};
 	void* PipeRead = nullptr;
 	void* PipeWrite = nullptr;
 	verify(FPlatformProcess::CreatePipe(PipeRead, PipeWrite));
@@ -227,87 +219,40 @@ EIntermediateProcessingResult DocGenMdxOutputProcessor::ConvertJsonToMdx(FString
 
 	FProcHandle Proc = FPlatformProcess::CreateProc(*(BinaryPath.Path / "convert.exe"), *Args, true, false, false,
 													nullptr, 0, nullptr, PipeWrite);
-
-	int32 ReturnCode = 0;
-	if (Proc.IsValid())
+	if (!Proc.IsValid())
 	{
-		FString BufferedText;
-		for (bool bProcessFinished = false; !bProcessFinished;)
-		{
-			bProcessFinished = FPlatformProcess::GetProcReturnCode(Proc, &ReturnCode);
-
-			/*
-			if(!bProcessFinished && Warn->ReceivedUserCancel())
-			{
-			FPlatformProcess::TerminateProc(ProcessHandle);
-			bProcessFinished = true;
-			}
-			*/
-			BufferedText += FPlatformProcess::ReadPipe(PipeRead);
-			int32 EndOfLineIdx;
-			while (BufferedText.FindChar('\n', EndOfLineIdx))
-			{
-				FString Line = BufferedText.Left(EndOfLineIdx);
-				Line.RemoveFromEnd(TEXT("\r"));
-
-				UE_LOG(LogKantanDocGen, Error, TEXT("[KantanDocGen] %s"), *Line);
-
-				BufferedText = BufferedText.Mid(EndOfLineIdx + 1);
-			}
-
-			FPlatformProcess::Sleep(0.1f);
-		}
-		FPlatformProcess::CloseProc(Proc);
-		Proc.Reset();
-
-		if (ReturnCode != 0)
-		{
-			UE_LOG(LogKantanDocGen, Error, TEXT("KantanDocGen tool failed (code %i), see above output."), ReturnCode);
-			return EIntermediateProcessingResult::UnknownError;
-		}
-
-		// After successfully generating the .mdx docs and image files, copy them to doc_root
-		IFileManager& FileManager = IFileManager::Get();
-		FFilePath MdxDestinationPath {DocRootPath.Path / "en-us/generated-refdocs.mdx"};
-		FDirectoryPath ImgDestinationPath {DocRootPath.Path / "en-us/img/generated-refdocs"};
-
-		if (FileManager.Copy(*MdxDestinationPath.FilePath, *OutMdxPath.FilePath) != 0)
-		{
-			UE_LOG(LogKantanDocGen, Error, TEXT("Failed to copy %s to %s"), *OutMdxPath.FilePath,
-				   *MdxDestinationPath.FilePath);
-			return EIntermediateProcessingResult::UnknownError;
-		}
-
-		FileManager.DeleteDirectory(*ImgDestinationPath.Path);
-		TArray<FString> ImgDirectories;
-		FileManager.FindFilesRecursive(ImgDirectories, *IntermediateDir, TEXT("img"), false, true);
-		for (FString ImgDirectory : ImgDirectories)
-		{
-			TArray<FString> ImageFiles;
-			FileManager.FindFiles(ImageFiles, *ImgDirectory, TEXT("png"));
-			for (FString Image : ImageFiles)
-			{
-				FString SourceImagePath {ImgDirectory / Image};
-				FString DestinationImagePath {ImgDestinationPath.Path / Image};
-				if (FileManager.Copy(*DestinationImagePath, *SourceImagePath) != 0)
-				{
-					UE_LOG(LogKantanDocGen, Error, TEXT("Failed to copy %s to %s"), *SourceImagePath,
-						   *DestinationImagePath);
-					return EIntermediateProcessingResult::UnknownError;
-				}
-			}
-		}
-		return EIntermediateProcessingResult::Success;
-	}
-	else
-	{
+		UE_LOG(LogKantanDocGen, Error, TEXT("Failed to create process %s"), *(BinaryPath.Path / "convert.exe"));
 		return EIntermediateProcessingResult::UnknownError;
 	}
-}
 
-EIntermediateProcessingResult DocGenMdxOutputProcessor::ConvertMdxToHtml(FString IntermediateDir, FString OutputDir)
-{
-	// create a docusaurus staging directory
+	FString BufferedText;
+	int32 ReturnCode = 0;
+	for (bool bProcessFinished = false; !bProcessFinished;)
+	{
+		bProcessFinished = FPlatformProcess::GetProcReturnCode(Proc, &ReturnCode);
+		BufferedText += FPlatformProcess::ReadPipe(PipeRead);
+		int32 EndOfLineIdx;
+		while (BufferedText.FindChar('\n', EndOfLineIdx))
+		{
+			FString Line = BufferedText.Left(EndOfLineIdx);
+			Line.RemoveFromEnd(TEXT("\r"));
+
+			UE_LOG(LogKantanDocGen, Error, TEXT("[KantanDocGen] %s"), *Line);
+
+			BufferedText = BufferedText.Mid(EndOfLineIdx + 1);
+		}
+
+		FPlatformProcess::Sleep(0.1f);
+	}
+	FPlatformProcess::CloseProc(Proc);
+	Proc.Reset();
+	if (ReturnCode != 0)
+	{
+		UE_LOG(LogKantanDocGen, Error, TEXT("KantanDocGen tool failed (code %i), see above output."), ReturnCode);
+		return EIntermediateProcessingResult::UnknownError;
+	}
+
+	// create docusaurus staging directory
 	const FString DocusaurusStagingPath {IntermediateDir / "docusaurus"};
 	if (!FPlatformFileManager::Get().GetPlatformFile().CopyDirectoryTree(*DocusaurusStagingPath, *DocusaurusPath.Path,
 																		 true))
@@ -316,22 +261,49 @@ EIntermediateProcessingResult DocGenMdxOutputProcessor::ConvertMdxToHtml(FString
 			   *DocusaurusPath.Path, *DocusaurusStagingPath);
 		return EIntermediateProcessingResult::UnknownError;
 	}
-	// merge doc_root mdx and img into staging directory
-	if (!FPlatformFileManager::Get().GetPlatformFile().CopyDirectoryTree(*(DocusaurusStagingPath / "public/en-us"),
-																		 *(DocRootPath.Path / "en-us"), false))
+
+	// merge doc_root into staging directory
+	if (!FPlatformFileManager::Get().GetPlatformFile().CopyDirectoryTree(*(DocusaurusStagingPath / "public"),
+																		 *(DocRootPath.Path), false))
 	{
 		UE_LOG(LogKantanDocGen, Error, TEXT("Failed to merge doc_root %s into docusaurus staging directory %s"),
-			   *(DocRootPath.Path / "en-us"), *(DocusaurusStagingPath / "public/en-us"));
+			   *(DocRootPath.Path), *(DocusaurusStagingPath / "public"));
 		return EIntermediateProcessingResult::UnknownError;
 	}
-	// copy sidebars.js, replacing the existing file
-	if (!FPlatformFileManager::Get().GetPlatformFile().CopyFile(*(DocusaurusStagingPath / "public/menu/sidebars.js"),
-																*(DocRootPath.Path / "menu/sidebars.js")))
+
+	// copy the newly generated mdx and img files into staging directory
+	const FFilePath MdxDestinationPath {DocusaurusStagingPath / "public/en-us/generated-refdocs.mdx"};
+	const FDirectoryPath ImgDestinationPath {DocusaurusStagingPath / "public/en-us/img/generated-refdocs"};
+	if (IFileManager::Get().Copy(*MdxDestinationPath.FilePath, *OutMdxPath.FilePath) != 0)
 	{
-		UE_LOG(LogKantanDocGen, Error, TEXT("Failed to merge doc_root %s into staging directory %s"),
-			   *(DocRootPath.Path / "menu/sidebars.js"), *(DocusaurusStagingPath / "public/menu/sidebars.js"));
+		UE_LOG(LogKantanDocGen, Error, TEXT("Failed to copy generated file %s to %s"), *OutMdxPath.FilePath,
+			   *MdxDestinationPath.FilePath);
 		return EIntermediateProcessingResult::UnknownError;
 	}
+	TArray<FString> ImgDirectories;
+	IFileManager::Get().FindFilesRecursive(ImgDirectories, *IntermediateDir, TEXT("img"), false, true);
+	for (FString ImgDirectory : ImgDirectories)
+	{
+		TArray<FString> ImageFiles;
+		IFileManager::Get().FindFiles(ImageFiles, *ImgDirectory, TEXT("png"));
+		for (FString Image : ImageFiles)
+		{
+			FString SourceImagePath {ImgDirectory / Image};
+			FString DestinationImagePath {ImgDestinationPath.Path / Image};
+			if (IFileManager::Get().Copy(*DestinationImagePath, *SourceImagePath) != 0)
+			{
+				UE_LOG(LogKantanDocGen, Error, TEXT("Failed to copy %s to %s"), *SourceImagePath,
+					   *DestinationImagePath);
+				return EIntermediateProcessingResult::UnknownError;
+			}
+		}
+	}
+	return EIntermediateProcessingResult::Success;
+}
+
+EIntermediateProcessingResult DocGenMdxOutputProcessor::ConvertMdxToHtml(FString IntermediateDir, FString OutputDir)
+{
+	const FString DocusaurusStagingPath {IntermediateDir / "docusaurus"};
 
 	// invoke npm install to install required packages
 	FProcHandle InstallProcessHandle =
@@ -351,6 +323,7 @@ EIntermediateProcessingResult DocGenMdxOutputProcessor::ConvertMdxToHtml(FString
 		UE_LOG(LogKantanDocGen, Error, TEXT("npm install error"));
 		return EIntermediateProcessingResult::UnknownError;
 	}
+
 	// invoke npm run build to build the html docs
 	FProcHandle BuildProcessHandle =
 		FPlatformProcess::CreateProc(*(NpmExecutablePath.FilePath), TEXT("run build"), true, false, false, nullptr, 0,
@@ -369,13 +342,13 @@ EIntermediateProcessingResult DocGenMdxOutputProcessor::ConvertMdxToHtml(FString
 		UE_LOG(LogKantanDocGen, Error, TEXT("npm run build error"));
 		return EIntermediateProcessingResult::UnknownError;
 	}
+
 	// copy result from intermediate directory to output directory
-	FString HtmlDocsPath {DocusaurusStagingPath / "build"};
-	//FString HtmlOutputDir {"C:/dev/DocsTest"};
-	if (!FPlatformFileManager::Get().GetPlatformFile().CopyDirectoryTree(*OutputDir, *HtmlDocsPath, true))
+	if (!FPlatformFileManager::Get().GetPlatformFile().CopyDirectoryTree(*OutputDir, *(DocusaurusStagingPath / "build"),
+																		 true))
 	{
-		UE_LOG(LogKantanDocGen, Error, TEXT("Failed to copy build docs %s to output directory %s"), *HtmlDocsPath,
-			   *OutputDir);
+		UE_LOG(LogKantanDocGen, Error, TEXT("Failed to copy build docs %s to output directory %s"),
+			   *(DocusaurusStagingPath / "build"), *OutputDir);
 		return EIntermediateProcessingResult::UnknownError;
 	}
 	return EIntermediateProcessingResult::Success;

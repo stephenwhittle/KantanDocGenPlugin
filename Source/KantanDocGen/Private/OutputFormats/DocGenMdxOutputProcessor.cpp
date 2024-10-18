@@ -398,7 +398,7 @@ DocGenMdxOutputProcessor::DocGenMdxOutputProcessor(TOptional<FFilePath> Template
 	}
 	else
 	{
-		DocusaurusPath.Path = FPaths::ProjectDir() / "Doc/docusaurus";
+		DocusaurusPath.Path = FPaths::ProjectDir() / "Tools/docusaurus";
 	}
 }
 
